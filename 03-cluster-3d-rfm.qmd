@@ -1,0 +1,180 @@
+---
+title: "RFM Clustering — Recency × Frequency × Monetary"
+---
+
+[RFM analysis](https://en.wikipedia.org/wiki/RFM_(market_research)) is a 30-year-old segmentation framework, originally for direct marketing. Each subject (customer or, here, *product*) is summarized by three numbers:
+
+- **Recency** — how long ago was it last purchased? (lower = better)
+- **Frequency** — how often was it purchased? (higher = better)
+- **Monetary** — how much revenue did it generate? (higher = better)
+
+The classic application is customer scoring; we apply the same logic at the article level — *which products in the catalog are healthy, which are dying, which need attention?*
+
+```{r}
+#| label: setup
+#| message: false
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(plotly)
+library(rpart)
+library(rpart.plot)
+
+set.seed(42)
+```
+
+## Compute R, F, M per article
+
+Reference date: 2017-06-30 (the last day of the data window). Recency is measured in months since the article's last sale.
+
+```{r}
+#| label: rfm-features
+raw <- read_delim("data/synthetic/transactions.csv", delim = ";",
+                  show_col_types = FALSE)
+
+REF_DATE <- as.Date("2017-06-30")
+
+rfm <- raw |>
+  group_by(article_name) |>
+  summarise(
+    frequency = n(),
+    value     = sum(gross_price),
+    recency   = as.numeric(REF_DATE - max(date)) / 30.4375,  # months
+    .groups   = "drop"
+  )
+
+cat(sprintf("%d articles, recency range [%.1f, %.1f] months, value range [%.0f, %.0f] EUR\n",
+            nrow(rfm), min(rfm$recency), max(rfm$recency),
+            min(rfm$value), max(rfm$value)))
+```
+
+A quick look at the marginal distributions:
+
+```{r}
+#| label: fig-rfm-distributions
+#| fig-cap: "Marginal distributions of recency (months since last sale), frequency (line-item count), and monetary value (EUR)."
+#| fig-width: 11
+#| fig-height: 3.2
+library(patchwork)
+p1 <- ggplot(rfm, aes(recency))   + geom_histogram(bins = 15, fill = "steelblue") + labs(x = "recency (months)")
+p2 <- ggplot(rfm, aes(frequency)) + geom_histogram(bins = 15, fill = "darkorange") + labs(x = "frequency")
+p3 <- ggplot(rfm, aes(value))     + geom_histogram(bins = 15, fill = "seagreen") + labs(x = "value (EUR)")
+p1 + p2 + p3
+```
+
+Most articles have very recent last sales (the data window ends 2017-06-30, and most products are still selling). A small tail of articles last sold months ago — these are the declining products we engineered into the synthesis (`filing_cabinet`, `dvd_player`).
+
+## How many clusters?
+
+```{r}
+#| label: fig-elbow
+#| fig-cap: "Elbow plot: the within-cluster sum of squares drops sharply through k=4, flattening after."
+features <- scale(rfm[, c("frequency", "recency", "value")])
+
+inertias <- sapply(1:10, function(k) {
+  kmeans(features, centers = k, nstart = 10)$tot.withinss
+})
+
+ggplot(data.frame(k = 1:10, ss = inertias), aes(k, ss)) +
+  geom_line() + geom_point(size = 2) +
+  scale_x_continuous(breaks = 1:10) +
+  labs(x = "Number of clusters", y = "Within-cluster SS")
+```
+
+The bend lands around **k = 4** — same as the BCG analysis, suggesting the catalog naturally falls into roughly four product archetypes.
+
+## Fit and rank clusters
+
+```{r}
+#| label: fit-kmeans
+K <- 4
+fit <- kmeans(features, centers = K, nstart = 25)
+rfm$cluster <- fit$cluster
+
+# Rank clusters: higher value & frequency, lower recency = better
+centers <- as.data.frame(fit$centers) |>
+  tibble::rowid_to_column("cluster") |>
+  mutate(weight = (frequency + value - recency) / 3) |>
+  arrange(desc(weight)) |>
+  mutate(rank = row_number())
+
+rfm <- rfm |>
+  left_join(centers |> select(cluster, rank), by = "cluster")
+
+centers |> select(cluster, rank, recency, frequency, value, weight) |> round(3)
+```
+
+## The 3D view
+
+Plotly gives us a rotatable, zoomable 3D scatter — much more useful than a static projection when three axes matter.
+
+```{r}
+#| label: fig-3d-rfm
+#| fig-cap: "Interactive 3D RFM space. Drag to rotate, scroll to zoom, hover for product names. Cluster numbers are ranked: 1 = top performers (frequent, valuable, recent)."
+plot_ly(
+  rfm,
+  x = ~recency, y = ~frequency, z = ~value,
+  color = ~factor(rank),
+  colors = c("#27ae60", "#3498db", "#f39c12", "#c0392b"),
+  text = ~article_name,
+  hovertemplate = paste0(
+    "<b>%{text}</b><br>",
+    "recency: %{x:.1f} mo<br>",
+    "frequency: %{y}<br>",
+    "value: €%{z:,.0f}<extra></extra>"
+  ),
+  type = "scatter3d", mode = "markers",
+  marker = list(size = 6, opacity = 0.85)
+) |>
+  layout(
+    scene = list(
+      xaxis = list(title = "Recency (months)"),
+      yaxis = list(title = "Frequency"),
+      zaxis = list(title = "Monetary value (EUR)")
+    ),
+    legend = list(title = list(text = "<b>Rank</b>"))
+  )
+```
+
+## Cluster narrative
+
+```{r}
+#| label: cluster-summary
+rfm |>
+  group_by(rank) |>
+  summarise(
+    n_products = n(),
+    mean_recency   = round(mean(recency),   2),
+    mean_frequency = round(mean(frequency), 0),
+    mean_value     = round(mean(value),     0),
+    examples = paste(head(article_name[order(-value)], 4), collapse = ", "),
+    .groups = "drop"
+  )
+```
+
+Reading the table:
+
+- **Rank 1** — recent, frequently sold, high revenue. The flagship products (sofas, beds, dining tables and their high-frequency partners). Marketing should protect these.
+- **Rank 2 / 3** — middle of the pack. Either decent volume but lower revenue (smaller-ticket items like chairs and decor), or solid revenue but lower volume.
+- **Rank 4** — high recency (i.e. *not* recent — last sold months ago), low frequency, low value. The end-of-life products. Candidates for delisting or replacement.
+
+## A simple rule from the clusters
+
+The decision tree reduces the 4-cluster structure to a few interpretable splits:
+
+```{r}
+#| label: fig-tree
+#| fig-cap: "Decision tree predicting cluster rank from raw R/F/M values. The thresholds are the boundaries the k-means actually picked, made readable."
+tree <- rpart(rank ~ recency + frequency + value, data = rfm,
+              method = "class", control = rpart.control(maxdepth = 4))
+rpart.plot(tree, type = 2, extra = 100, fallen.leaves = TRUE,
+           box.palette = "BuOr", main = "")
+```
+
+Codified as a few `if`-thresholds, this is a deployable scoring rule that needs no clustering library at runtime.
+
+## Takeaway
+
+The k=4 RFM segmentation cleanly separates the catalog into a healthy core, a long middle, and a tail of dying products. The framework was originally designed for customers but transfers directly to articles — and the same techniques work for *any* entity you can summarize as (recency, frequency, monetary).
+
+For the standalone Python version of this same analysis with a more interactive 3D experience, see [`notebooks/rfm_clustering.ipynb`](notebooks/rfm_clustering.ipynb).

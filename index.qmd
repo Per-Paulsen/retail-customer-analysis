@@ -1,0 +1,40 @@
+---
+title: "Retail Customer & Basket Analysis"
+---
+
+End-to-end customer and product analytics on a synthetic retail transaction dataset, demonstrating three classic techniques in both R and Python.
+
+## Chapters
+
+1. [Association Rules](01-association.qmd) — market basket analysis with `arules` (R) and `mlxtend` (Python), side by side.
+2. [BCG-style Clustering](02-cluster-2d-bcg.qmd) — products positioned by market share × growth rate (Python / scikit-learn).
+3. [RFM Clustering](03-cluster-3d-rfm.qmd) — articles segmented by Recency, Frequency, Monetary value (R / kmeans + interactive 3D with plotly).
+
+A standalone Python notebook ([`notebooks/rfm_clustering.ipynb`](notebooks/rfm_clustering.ipynb)) replays the RFM analysis end-to-end with an interactive 3D scatter — runnable in Colab without local setup.
+
+## Data overview
+
+The dataset is synthesized to mirror a two-year transaction log from a furniture / home-goods retailer.
+
+| | |
+|---|---|
+| **Rows** | ~6,300 line items |
+| **Transactions** | 3,500 baskets |
+| **Articles** | 66 SKUs across 40 distinct product names |
+| **Date range** | 2015-07-01 to 2017-06-30 |
+| **Categories** | 10 (dining, living, bedroom, office, lighting, electronics, decor, storage, kitchen, outdoor) |
+
+The synthesis encodes co-purchase patterns (e.g. *dining_table → dining_chair* at 85%) and temporal trends (some articles grow over the window, others decline) so the downstream analyses produce non-trivial, interpretable clusters and rules. Full schema and design rationale: [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md).
+
+## Reproducing locally
+
+```bash
+# Generate the synthetic dataset (deterministic, seed=42)
+python scripts/generate_synthetic_data.py
+
+# Render the site
+quarto render
+
+# Serve locally with auto-reload
+quarto preview
+```

@@ -1,0 +1,17 @@
+# Python dependencies for chapter rendering, the standalone notebook, and the
+# synthetic data generator. Pinned to major-version floors that match the
+# code; minor/patch updates are expected to be safe.
+
+numpy>=2.0
+pandas>=2.0
+matplotlib>=3.8
+seaborn>=0.13
+plotly>=5.20
+scikit-learn>=1.5
+mlxtend>=0.23
+
+# Notebook tooling
+jupyter>=1.0
+ipykernel>=6.29
+nbformat>=5.10
+nbconvert>=7.16

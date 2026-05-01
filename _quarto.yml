@@ -1,0 +1,33 @@
+project:
+  type: website
+  output-dir: _site
+
+website:
+  title: "Retail Customer & Basket Analysis"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: 01-association.qmd
+        text: Association Rules
+      - href: 02-cluster-2d-bcg.qmd
+        text: BCG Clustering
+      - href: 03-cluster-3d-rfm.qmd
+        text: RFM Clustering
+    right:
+      - icon: github
+        href: https://github.com/Per-Paulsen/retail-customer-analysis
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-fold: show
+    code-tools: true
+    fig-width: 8
+    fig-height: 5
+
+execute:
+  freeze: auto
+  warning: false
+  message: false

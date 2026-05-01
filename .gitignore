@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+*~
+.~lock.*#
+~$*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+renv/library/
+renv/local/
+renv/lock/
+renv/python/
+renv/staging/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.ipynb_checkpoints/
+*.egg-info/
+
+# Quarto
+/_site/
+/_book/
+/_freeze/
+*_files/
+.quarto/
+
+# Real data — NEVER commit (defense in depth alongside physical separation)
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
+
+/.quarto/
+**/*.quarto_ipynb

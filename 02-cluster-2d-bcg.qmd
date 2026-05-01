@@ -1,0 +1,200 @@
+---
+title: "BCG-style Clustering — Market Share × Growth"
+---
+
+The [Boston Consulting Group product matrix](https://en.wikipedia.org/wiki/Growth%E2%80%93share_matrix) is a 50-year-old framework for thinking about a product portfolio. Each product is plotted on two axes:
+
+- **Market share** — what fraction of total revenue does this product account for?
+- **Growth rate** — is the product gaining or losing ground over time?
+
+The four quadrants give the framework its names: **Stars** (high share, high growth), **Cash Cows** (high share, low growth), **Question Marks** (low share, high growth), **Dogs** (low share, low growth).
+
+In this chapter we recreate the BCG positioning data-driven: aggregate per-product revenue across two halves of the date range, compute share and growth, then cluster the resulting 2D positions with k-means.
+
+## Setup
+
+```{python}
+#| label: setup
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier, plot_tree
+
+sns.set_theme(style="whitegrid")
+RANDOM_STATE = 42
+```
+
+## Compute share and growth
+
+We split the 24-month window at its midpoint (2016-06-30) and aggregate revenue per product in each half:
+
+```{python}
+#| label: aggregate
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+SPLIT = pd.Timestamp("2016-06-30")
+df["period"] = np.where(df["date"] <= SPLIT, "p1", "p2")
+
+period_rev = (
+    df.groupby(["article_name", "period"])["gross_price"].sum()
+      .unstack(fill_value=0.0)
+      .rename(columns={"p1": "rev_p1", "p2": "rev_p2"})
+)
+period_rev["revenue"] = period_rev["rev_p1"] + period_rev["rev_p2"]
+period_rev["share"]   = period_rev["revenue"] / period_rev["revenue"].sum()
+period_rev["growth"]  = np.where(
+    period_rev["rev_p1"] > 0,
+    (period_rev["rev_p2"] - period_rev["rev_p1"]) / period_rev["rev_p1"],
+    np.where(period_rev["rev_p2"] > 0, 1.0, -1.0),
+)
+period_rev = period_rev[period_rev["share"] > 0].copy()
+period_rev[["rev_p1", "rev_p2", "revenue", "share", "growth"]].head()
+```
+
+A glimpse at the distributions — both are heavily skewed, which we'll handle:
+
+```{python}
+#| label: fig-distributions
+#| fig-cap: "Raw share and growth distributions. Heavy tails on both."
+fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+sns.histplot(period_rev["share"],  bins=30, ax=axes[0], color="steelblue")
+axes[0].set_title("Share (linear)"); axes[0].set_xlabel("share")
+sns.histplot(period_rev["growth"], bins=30, ax=axes[1], color="indianred")
+axes[1].set_title("Growth"); axes[1].set_xlabel("growth")
+plt.tight_layout()
+plt.show()
+```
+
+## Choosing k — elbow method
+
+We standardize both features and run k-means for several values of *k*, plotting the within-cluster sum of squares:
+
+```{python}
+#| label: fig-elbow
+#| fig-cap: "Elbow plot. The bend around k=4 suggests four meaningful clusters."
+features = period_rev[["growth", "share"]].values
+X = StandardScaler().fit_transform(features)
+
+ks = range(1, 11)
+inertias = [
+    KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10).fit(X).inertia_
+    for k in ks
+]
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.plot(list(ks), inertias, marker="o")
+ax.set_xlabel("k"); ax.set_ylabel("Within-cluster SS")
+plt.show()
+```
+
+The elbow lands around **k = 4** — neat alignment with the four BCG quadrants.
+
+## Fit the clusters
+
+```{python}
+#| label: fit-kmeans
+K = 4
+km = KMeans(n_clusters=K, random_state=RANDOM_STATE, n_init=10).fit(X)
+period_rev["cluster"] = km.labels_
+
+# Rank clusters by a simple "value" weight = ½·share + ½·growth (both standardized)
+centers = pd.DataFrame(km.cluster_centers_, columns=["growth_z", "share_z"])
+centers["weight"] = 0.5 * centers["growth_z"] + 0.5 * centers["share_z"]
+centers["rank"]   = centers["weight"].rank(ascending=False).astype(int)
+
+# Map cluster id → rank, keeping article_name as the index of period_rev
+period_rev["rank"] = period_rev["cluster"].map(centers["rank"])
+period_rev[["share", "growth", "cluster", "rank"]].sort_values("rank").head()
+```
+
+## The BCG plot
+
+Heavy tails on share/growth would squash everything into one corner if plotted directly. We apply a signed cube-root transform for the visualization (clustering is still on the raw scaled features):
+
+```{python}
+#| label: fig-bcg
+#| fig-cap: "Products positioned by transformed share × growth. Quadrants split at the data-driven mean of each axis. Cluster numbers are ranked: 1 = top performers, 4 = lagging."
+def signed_cbrt(x):
+    return np.sign(x) * np.cbrt(np.abs(x))
+
+plot_df = period_rev.copy()
+plot_df["share_t"]  = signed_cbrt(plot_df["share"])
+plot_df["growth_t"] = signed_cbrt(plot_df["growth"])
+
+fig, ax = plt.subplots(figsize=(9, 6))
+sns.scatterplot(
+    data=plot_df, x="share_t", y="growth_t",
+    hue="rank", palette="viridis", s=80, ax=ax, legend="full",
+)
+ax.axhline(plot_df["growth_t"].mean(), color="grey", lw=0.8, ls="--")
+ax.axvline(plot_df["share_t"].mean(),  color="grey", lw=0.8, ls="--")
+
+# Annotate notable products
+for _, r in plot_df.nlargest(8, "share").iterrows():
+    ax.annotate(r.name, (r["share_t"], r["growth_t"]),
+                xytext=(5, 5), textcoords="offset points", fontsize=8)
+for _, r in plot_df.nlargest(4, "growth").iterrows():
+    ax.annotate(r.name, (r["share_t"], r["growth_t"]),
+                xytext=(5, 5), textcoords="offset points", fontsize=8, color="darkgreen")
+
+ax.set_xlabel("Market share (signed cube-root)")
+ax.set_ylabel("Growth rate (signed cube-root)")
+ax.legend(title="Cluster rank")
+plt.tight_layout()
+plt.show()
+```
+
+## Who is in each cluster?
+
+```{python}
+#| label: cluster-membership
+summary = (
+    period_rev
+    .reset_index()
+    .groupby("rank")
+    .agg(
+        n_products=("article_name", "count"),
+        mean_share=("share",  "mean"),
+        mean_growth=("growth", "mean"),
+        members=("article_name", lambda s: ", ".join(sorted(s)[:6]) + ("…" if len(s) > 6 else "")),
+    )
+    .reset_index()
+    .sort_values("rank")
+)
+summary
+```
+
+Reading the clusters in order:
+
+- **Rank 1 (top right)** — high share *and* growing. These are the products to amplify. Expect to see the growing categories we engineered: garden chairs/tables, ottoman, led_strip.
+- **Rank 2 / 3** — mixed positions: high share + low growth (mature workhorses), or low share + high growth (rising bets).
+- **Rank 4 (bottom left)** — low share *and* shrinking. The declining articles (`filing_cabinet`, `dvd_player`) live here.
+
+## Deriving rules from the clusters
+
+A decision tree on the same features tells us, in plain language, which thresholds the clustering effectively picked:
+
+```{python}
+#| label: fig-tree
+#| fig-cap: "Decision tree learned to predict cluster rank from raw share and growth. Read each split as: 'if growth ≤ X and share ≤ Y, then cluster Z'."
+tree = DecisionTreeClassifier(
+    max_depth=3, random_state=RANDOM_STATE,
+).fit(period_rev[["growth", "share"]], period_rev["rank"])
+
+fig, ax = plt.subplots(figsize=(12, 6))
+plot_tree(
+    tree, feature_names=["growth", "share"], class_names=[str(i) for i in sorted(period_rev["rank"].unique())],
+    filled=True, rounded=True, fontsize=9, ax=ax,
+)
+plt.tight_layout()
+plt.show()
+```
+
+This tree could be deployed as a simple if/else in any system that needs to place a new product into the BCG framework — no full k-means re-fit required.
+
+## Takeaway
+
+The k=4 clustering recovers the BCG framework directly from data, and the assignments line up with the temporal trends we engineered: growing products land in the top-right, declining ones in the bottom-left, mature high-volume products as cash cows in the middle-right.
+
+For a real retailer, the actionable read is *don't* spread marketing budget evenly across the catalog. Lean into Stars and rising Question Marks, milk Cash Cows for the cash they generate, and rationalize the Dogs (delist or replace).
