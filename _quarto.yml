@@ -8,14 +8,16 @@ website:
     left:
       - href: index.qmd
         text: Home
-      - href: 01-association.qmd
-        text: Association Rules
-      - href: 02-cluster-2d-bcg.qmd
-        text: BCG Clustering
-      - href: 03-cluster-3d-rfm.qmd
-        text: RFM Clustering
-      - href: 04-clv-bgnbd.qmd
-        text: CLV
+      - text: Analyses
+        menu:
+          - href: 01-association.qmd
+            text: Association Rules
+          - href: 02-cluster-2d-bcg.qmd
+            text: BCG Clustering
+          - href: 03-cluster-3d-rfm.qmd
+            text: RFM Clustering
+          - href: 04-clv-bgnbd.qmd
+            text: Customer Lifetime Value
       - href: 05-insights.qmd
         text: Insights
       - href: dashboard.html
@@ -28,6 +30,8 @@ format:
   html:
     theme: cosmo
     toc: true
+    toc-location: left
+    toc-depth: 2
     code-fold: show
     code-tools: true
     fig-width: 8

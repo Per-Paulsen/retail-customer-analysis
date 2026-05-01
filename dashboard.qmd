@@ -29,6 +29,9 @@ from IPython.core.interactiveshell import InteractiveShell
 InteractiveShell.ast_node_interactivity = "last_expr"
 
 pio.renderers.default = "notebook_connected"
+pio.templates.default = "plotly_white"  # consistent with sns.set_theme(style="whitegrid") in chapters
+
+RANK_PALETTE = ["#27ae60", "#3498db", "#f39c12", "#c0392b"]
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from mlxtend.preprocessing import TransactionEncoder
@@ -208,7 +211,7 @@ fig.show()
 #| title: "BCG quadrant — share × growth"
 fig = px.scatter(
     bcg_plot, x="share_t", y="growth_t", color="rank_str", hover_name="article_name",
-    color_discrete_sequence=["#27ae60", "#3498db", "#f39c12", "#c0392b"],
+    color_discrete_sequence=RANK_PALETTE,
     category_orders={"rank_str": ["1", "2", "3", "4"]},
     labels={"share_t": "Market share (signed cube-root)",
             "growth_t": "Growth rate (signed cube-root)",
@@ -226,7 +229,7 @@ fig.show()
 fig = px.scatter_3d(
     rfm_articles_reset, x="recency", y="frequency", z="value",
     color="rank_str", hover_name="article_name",
-    color_discrete_sequence=["#27ae60", "#3498db", "#f39c12", "#c0392b"],
+    color_discrete_sequence=RANK_PALETTE,
     category_orders={"rank_str": ["1", "2", "3", "4"]},
     labels={"recency": "Recency (mo)", "frequency": "Frequency",
             "value": "Value (EUR)", "rank_str": "Cluster rank"},

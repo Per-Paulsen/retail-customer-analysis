@@ -4,7 +4,7 @@ title: "Insights — Putting the Analyses Together"
 
 The four preceding chapters answered separate questions about the dataset. Each on its own is a reasonable analysis. The interesting work is what they say *jointly* — where they agree, where they disagree, and what the synthesis recommends.
 
-This chapter recomputes the per-chapter outputs, joins them on a common key (product name on the article side, customer id on the customer side), and surfaces the cross-cuts that are most actionable for the business.
+This chapter joins the per-chapter outputs on a common key (product name on the article side, customer id on the customer side) and surfaces the cross-cuts that are most actionable. **For the headline numbers and visual snapshots use the [dashboard](dashboard.html); this page is the prose narrative.**
 
 ```{python}
 #| label: setup
@@ -25,25 +25,6 @@ RANDOM_STATE = 42
 df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
 SPLIT = pd.Timestamp("2016-06-30")
 REF_DATE = pd.Timestamp("2017-06-30")
-```
-
-## Headline numbers
-
-```{python}
-#| label: headlines
-total_revenue = df["gross_price"].sum()
-n_customers = df["customer_id"].nunique()
-n_transactions = df["transaction_id"].nunique()
-n_articles = df["article_name"].nunique()
-
-returning = df.groupby("customer_id")["transaction_id"].nunique()
-pct_returning = (returning >= 2).mean()
-
-print(f"Total gross revenue:    €{total_revenue:>12,.0f}")
-print(f"Customers:              {n_customers:>13,d}  ({pct_returning:.1%} returning)")
-print(f"Transactions:           {n_transactions:>13,d}")
-print(f"Distinct article names: {n_articles:>13,d}")
-print(f"Avg basket value:       €{df.groupby('transaction_id')['gross_price'].sum().mean():>12,.0f}")
 ```
 
 ## Building one product table from BCG + RFM
@@ -160,7 +141,7 @@ top_rules[["antecedent", "consequent", "support", "confidence", "lift",
 
 Rules that *push customers toward* top-tier products are the highest-leverage ones for cross-sell prompts: customers buying the antecedent are 5–10× more likely than chance to buy the (already-strong) consequent. Easy upsell.
 
-## Customer concentration — Pareto on CLV
+## Customer concentration — quantifying the Pareto
 
 ```{python}
 #| label: clv-pareto
@@ -169,44 +150,22 @@ summary = summary_data_from_transaction_data(
     tx, "customer_id", "date", monetary_value_col="gross_price",
     observation_period_end=tx["date"].max(), freq="D",
 )
-
 bgf = BetaGeoFitter(penalizer_coef=0.001).fit(summary["frequency"], summary["recency"], summary["T"])
-
 returning_only = summary[summary["frequency"] >= 1].copy()
 ggf = GammaGammaFitter(penalizer_coef=0.01).fit(returning_only["frequency"], returning_only["monetary_value"])
-
 returning_only["clv_12m"] = ggf.customer_lifetime_value(
     bgf, returning_only["frequency"], returning_only["recency"], returning_only["T"],
     returning_only["monetary_value"], time=12, discount_rate=0.01, freq="D",
 )
-returning_only = returning_only.sort_values("clv_12m", ascending=False)
+returning_sorted = returning_only.sort_values("clv_12m", ascending=False)
+total = returning_sorted["clv_12m"].sum()
 
-# Cumulative share of forecast revenue covered by top-N% of customers
-returning_only["cum_clv"] = returning_only["clv_12m"].cumsum()
-returning_only["cum_clv_pct"] = returning_only["cum_clv"] / returning_only["clv_12m"].sum()
-returning_only["cust_pct"] = (np.arange(len(returning_only)) + 1) / len(returning_only)
-```
-
-```{python}
-#| label: fig-pareto
-#| fig-cap: "Lorenz-style curve: cumulative share of forecast 12-month revenue covered by the top X% of returning customers."
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.plot(returning_only["cust_pct"], returning_only["cum_clv_pct"], lw=2)
-ax.plot([0, 1], [0, 1], color="grey", ls=":", label="Equality line")
 for q in [0.10, 0.20, 0.30, 0.50]:
-    idx = int(q * len(returning_only)) - 1
-    pct = returning_only["cum_clv_pct"].iloc[idx]
-    ax.scatter([q], [pct], color="darkorange", zorder=3)
-    ax.annotate(f"top {int(q*100)}% → {pct:.0%}",
-                (q, pct), xytext=(8, -8), textcoords="offset points")
-ax.set_xlabel("Cumulative share of returning customers (sorted by CLV, desc)")
-ax.set_ylabel("Cumulative share of forecast 12-month revenue")
-ax.legend()
-plt.tight_layout()
-plt.show()
+    cum = returning_sorted["clv_12m"].iloc[: int(q * len(returning_sorted))].sum()
+    print(f"  top {int(q*100):>2d}% of returning customers → {cum / total:.1%} of forecast 12-month revenue")
 ```
 
-The curve shows how unequal customer value is — the higher the curve sits, the more concentrated revenue is in the top customers. For our data, the top 20% of returning customers cover roughly half of forecast revenue.
+The top 20% of returning customers cover roughly half of forecast revenue — a clean Pareto. *(See the [dashboard](dashboard.html) for the Lorenz curve.)*
 
 ## Headline findings
 

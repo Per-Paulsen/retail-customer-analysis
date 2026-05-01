@@ -25,6 +25,7 @@ from sklearn.tree import DecisionTreeClassifier, plot_tree
 
 sns.set_theme(style="whitegrid")
 RANDOM_STATE = 42
+RANK_PALETTE = ["#27ae60", "#3498db", "#f39c12", "#c0392b"]  # rank 1 → 4, used in chapters 03 + dashboard too
 ```
 
 ## Compute share and growth
@@ -125,7 +126,7 @@ plot_df["growth_t"] = signed_cbrt(plot_df["growth"])
 fig, ax = plt.subplots(figsize=(9, 6))
 sns.scatterplot(
     data=plot_df, x="share_t", y="growth_t",
-    hue="rank", palette="viridis", s=80, ax=ax, legend="full",
+    hue="rank", palette=RANK_PALETTE, s=80, ax=ax, legend="full",
 )
 ax.axhline(plot_df["growth_t"].mean(), color="grey", lw=0.8, ls="--")
 ax.axvline(plot_df["share_t"].mean(),  color="grey", lw=0.8, ls="--")
