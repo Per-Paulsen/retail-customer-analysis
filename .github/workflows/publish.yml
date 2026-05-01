@@ -26,6 +26,10 @@ jobs:
           use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
+        env:
+          # plotly's webshot2 dep is mapped to Chromium via xtradeb/apps PPA,
+          # which times out unreliably. We render to HTML, no Chromium needed.
+          PKG_SYSREQS: "false"
         with:
           packages: |
             readr
