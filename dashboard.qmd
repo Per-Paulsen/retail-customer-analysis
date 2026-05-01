@@ -17,6 +17,18 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import plotly.io as pio
+from IPython.core.interactiveshell import InteractiveShell
+
+# Quarto's Jupyter engine sets `ast_node_interactivity = "all"`, which displays
+# the return value of *every* expression statement in a code chunk. For a
+# plotly figure that is then mutated via `fig.add_hline()`, `fig.update_layout()`,
+# etc., each method returns the figure — and each invocation gets rendered as
+# a separate plot. Restore the default so only the cell's last expression
+# triggers a display.
+InteractiveShell.ast_node_interactivity = "last_expr"
+
+pio.renderers.default = "notebook_connected"
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from mlxtend.preprocessing import TransactionEncoder
