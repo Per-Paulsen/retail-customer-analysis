@@ -10,7 +10,8 @@ End-to-end customer and product analytics on a synthetic retail transaction data
 2. [BCG-style Clustering](02-cluster-2d-bcg.qmd) — products positioned by market share × growth (Python / scikit-learn).
 3. [RFM Clustering](03-cluster-3d-rfm.qmd) — articles segmented by Recency, Frequency, Monetary value (R / kmeans + interactive 3D with plotly).
 4. [Customer Lifetime Value](04-clv-bgnbd.qmd) — probabilistic CLV with BG/NBD + Gamma-Gamma (Python / `lifetimes`).
-5. [Insights](05-insights.qmd) — synthesis of the four upstream chapters with cross-cuts and headline recommendations.
+5. [Survival Analysis](06-survival.qmd) — Kaplan-Meier and Cox PH on time-to-first-repeat (Python / `lifelines`).
+6. [Insights](05-insights.qmd) — synthesis of the upstream chapters with cross-cuts and headline recommendations.
 
 Plus a [**dashboard view**](dashboard.html) of the same findings, and a standalone [Python notebook](notebooks/rfm_clustering.ipynb) that replays the RFM analysis in Colab.
 

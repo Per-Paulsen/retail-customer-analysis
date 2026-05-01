@@ -24,6 +24,7 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 | [02 — BCG Clustering](02-cluster-2d-bcg.qmd) | Python | `scikit-learn`, `seaborn` | k-means quadrants on share × growth |
 | [03 — RFM Clustering](03-cluster-3d-rfm.qmd) | R | `kmeans`, `plotly`, `rpart` | 3D segmentation + decision tree |
 | [04 — Customer Lifetime Value](04-clv-bgnbd.qmd) | Python | `lifetimes` (BG/NBD + Gamma-Gamma) | Per-customer CLV + P(alive), holdout-validated |
+| [06 — Survival Analysis](06-survival.qmd) | Python | `lifelines` (Kaplan-Meier + Cox PH) | Time-to-first-repeat curves, hazard ratios |
 | [05 — Insights](05-insights.qmd) | Python | Cross-method synthesis | Recommendations + headline findings |
 | [Dashboard](dashboard.qmd) | Python | Quarto Dashboard, plotly | KPI tiles + tabbed visual explorer |
 | [Notebook — RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
@@ -70,6 +71,8 @@ The methodology is based on a 2017 internship project for a German retail compan
 
 **Customer Lifetime Value.** BG/NBD models per-customer purchase frequency + dropout probability assuming Gamma-distributed transaction rates and Beta-distributed dropout. Gamma-Gamma models per-transaction value as Gamma-distributed conditional on frequency. Combined: 12-month forecast revenue per customer, validated against a held-out tail of the timeline.
 
+**Survival analysis.** Kaplan-Meier estimates the population survival curve for time-to-first-repeat, with right-censoring on customers who haven't returned yet. Cox proportional hazards adds covariates (basket value, category, discount usage) and reports hazard ratios. Together: *who's still in play, when does the comeback rate flatten, what features speed or slow return?*
+
 **Insights synthesis.** Per-product table joining BCG + RFM ranks; per-rule table annotating top-tier consequents; Lorenz-style CLV concentration curve. Closes with five business recommendations grounded in the cross-cuts.
 
 ## Repository layout
@@ -83,6 +86,7 @@ retail-customer-analysis/
 ├── 03-cluster-3d-rfm.qmd   # Chapter 3 — R
 ├── 04-clv-bgnbd.qmd        # Chapter 4 — Python
 ├── 05-insights.qmd         # Chapter 5 — Python (synthesis)
+├── 06-survival.qmd         # Chapter 6 — Python (survival analysis)
 ├── dashboard.qmd           # Quarto dashboard view
 ├── notebooks/
 │   └── rfm_clustering.ipynb        # Standalone Colab notebook

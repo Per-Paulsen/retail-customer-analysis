@@ -10,6 +10,7 @@ plotly>=5.20
 scikit-learn>=1.5
 mlxtend>=0.23
 lifetimes>=0.11
+lifelines>=0.30
 
 # Notebook tooling
 jupyter>=1.0

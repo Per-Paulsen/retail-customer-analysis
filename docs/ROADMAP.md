@@ -6,39 +6,9 @@ The list is ranked by *expected portfolio impact* given the data we have.
 
 ---
 
-## 1. Survival Analysis — Time-to-Next-Purchase / Churn
+## ✅ 1. Survival Analysis — Time-to-First-Repeat
 
-**Question it answers:** *After a customer's last purchase, how long until they're effectively gone? At what point should we trigger a win-back campaign?*
-
-BG/NBD gives a P(alive) snapshot. Survival analysis quantifies the *time dynamic* directly: the hazard of "no further purchase" as a function of time since last purchase, conditional on customer features (cohort, average order value, category mix).
-
-**Tools**
-- Python: [`lifelines`](https://lifelines.readthedocs.io/) — Kaplan-Meier, Cox PH, Weibull AFT
-- R: `survival`, `survminer`
-
-**Sketch**
-
-```python
-from lifelines import KaplanMeierFitter, CoxPHFitter
-
-# Per customer: duration = days since last purchase, observed = whether they purchased again
-last_purchase = df.groupby("customer_id")["date"].max()
-returned_after_n = df.groupby("customer_id").apply(
-    lambda g: 1 if len(g["transaction_id"].unique()) > 1 else 0
-)
-# Build (duration, event) pairs and fit
-kmf = KaplanMeierFitter().fit(durations, events)
-kmf.plot_survival_function()  # the population survival curve
-
-cph = CoxPHFitter().fit(features_with_duration_event, duration_col="dur", event_col="event")
-cph.print_summary()  # per-feature hazard ratios
-```
-
-**Data requirements:** ✅ already have everything (per-customer transaction dates).
-
-**Effort:** 1 chapter, ~half-session of work. Mostly: defining "churn" carefully (e.g. *no purchase in 90/180/365 days*), building duration/event pairs, fitting Cox PH with covariates from the BCG/RFM clusters.
-
-**Why it complements CLV:** BG/NBD answers *will they come back*; Cox tells you *when, with which features driving the timing*.
+**Status:** **Implemented** as [Chapter 06 — Survival Analysis](../06-survival.qmd). Kaplan-Meier on time-to-second-purchase plus Cox PH with covariates from the first basket. Synthetic data has no covariate-driven effects by design (lifetime and rate are random per customer), so the chapter doubles as an honest demonstration of how to read a "no significant effects" result. Mechanics transfer directly to real data with structural effects.
 
 ---
 

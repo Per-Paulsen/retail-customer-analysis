@@ -18,6 +18,8 @@ website:
             text: RFM Clustering
           - href: 04-clv-bgnbd.qmd
             text: Customer Lifetime Value
+          - href: 06-survival.qmd
+            text: Survival (Time-to-Repeat)
       - href: 05-insights.qmd
         text: Insights
       - href: dashboard.html
