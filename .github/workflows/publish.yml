@@ -64,6 +64,11 @@ jobs:
         run: python scripts/generate_synthetic_data.py
 
       - name: Render Quarto site
+        env:
+          # Without this, reticulate creates an ephemeral uv venv with only
+          # auto-detected packages (numpy) and misses pandas/mlxtend/etc.
+          # that we just installed via pip. Point it at the system Python.
+          RETICULATE_PYTHON: ${{ env.pythonLocation }}/bin/python
         run: quarto render
 
       - uses: actions/upload-pages-artifact@v3
