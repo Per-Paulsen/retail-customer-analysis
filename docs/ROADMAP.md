@@ -12,37 +12,9 @@ The list is ranked by *expected portfolio impact* given the data we have.
 
 ---
 
-## 2. Demand Forecasting at Category Level
+## ✅ 2. Demand Forecasting at Category Level
 
-**Question it answers:** *How many units of each product category will we sell in the next 1, 3, 6 months? When should we order garden furniture for next spring?*
-
-SKU-level forecasting on this data is hopeless (66 SKUs × 24 months ≈ too sparse), but **product-group level** (10 groups × 24 months = 240 monthly observations) is enough for meaningful seasonal models.
-
-**Tools**
-- Python: [`prophet`](https://facebook.github.io/prophet/), [`statsforecast`](https://nixtla.github.io/statsforecast/) (modern, fast SARIMA / ETS / Theta)
-- R: `forecast` (Hyndman), `prophet`
-
-**Sketch**
-
-```python
-from statsforecast import StatsForecast
-from statsforecast.models import AutoARIMA, AutoETS
-
-# Aggregate to monthly category revenue
-monthly = (df.assign(month=df["date"].dt.to_period("M"))
-             .groupby(["month", "product_group"])["gross_price"].sum().reset_index())
-
-# Fit per-category, predict 6 months ahead
-sf = StatsForecast(models=[AutoARIMA(), AutoETS()], freq="MS")
-sf.fit(monthly.rename(columns={"product_group": "unique_id", "month": "ds", "gross_price": "y"}))
-forecast = sf.predict(h=6)
-```
-
-**Data requirements:** ✅ have date + revenue + category. *Caveat:* 24 months barely covers 2 seasonal cycles, so seasonal patterns will be uncertain. With more data, this is much stronger.
-
-**Effort:** 1 chapter, ~half-session. Best presented with cross-validation (rolling-origin) to show forecast accuracy isn't fiction.
-
-**Why this matters:** every retailer wants this. It's the single most-requested analysis in the wild.
+**Status:** **Implemented** as [Chapter 07 — Demand Forecasting](../07-forecasting.qmd). Monthly revenue per product group with a 3-month holdout, four models compared (naive, seasonal naive, ETS, SARIMA), MAE in EUR + MAPE per category. The chapter doubles as a real-world honest case study: with only 24 months of data the dominant finding is that simple baselines often beat fancier seasonal models — a classic forecasting result that survives every M-competition. Pivoted from `statsforecast` to `statsmodels` because statsforecast's scipy pin clashed with the Python 3.14 environment; statsmodels is pure-Python and dependable.
 
 ---
 

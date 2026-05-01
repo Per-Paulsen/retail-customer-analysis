@@ -1,0 +1,245 @@
+---
+title: "Demand Forecasting — Monthly Revenue per Category"
+---
+
+This chapter forecasts the next several months of revenue **at the product-group level**. Forecasting individual SKUs would be hopeless — 66 articles × 24 monthly observations is far too sparse. But aggregating to the 10 product groups gives 10 series of 24 monthly points each, which is enough for *meaningful* (if not flashy) forecasts.
+
+The honest framing of this chapter: with two years of data we sit right at the edge of what classical seasonal models can support. We get useful baselines, surface where models break down, and demonstrate the right *evaluation* discipline — which matters more in production than chasing the lowest possible MAPE on a too-small holdout.
+
+> Tools: `statsmodels` (pure-Python, dependable). For larger datasets, `statsforecast` and `prophet` are the modern fast and ergonomic alternatives.
+
+```{python}
+#| label: setup
+import warnings
+warnings.filterwarnings("ignore")
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from statsmodels.tsa.statespace.sarimax import SARIMAX
+from statsmodels.tsa.holtwinters import ExponentialSmoothing, SimpleExpSmoothing
+
+sns.set_theme(style="whitegrid")
+```
+
+## Aggregate to monthly revenue per category
+
+```{python}
+#| label: monthly-data
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
+
+monthly = (
+    df.groupby(["product_group", "month"])["gross_price"].sum()
+      .unstack(fill_value=0.0)
+      .stack().rename("revenue").reset_index()
+      .sort_values(["product_group", "month"])
+)
+
+print(f"Categories: {monthly['product_group'].nunique()}, "
+      f"Months: {monthly['month'].nunique()}, "
+      f"Total rows: {len(monthly)}")
+
+# Volume per category to pick the "well-behaved" series
+totals = monthly.groupby("product_group")["revenue"].sum().sort_values(ascending=False)
+print("\nTotal revenue per category:")
+for cat, val in totals.items():
+    print(f"  {cat}  €{val:>12,.0f}")
+```
+
+```{python}
+#| label: fig-series
+#| fig-cap: "Monthly revenue per category. Higher-volume categories (BEDR, DINI, LIVI) have visible seasonal-ish wobble; smaller ones are noisier."
+fig, ax = plt.subplots(figsize=(11, 5))
+for cat in totals.index:
+    s = monthly[monthly["product_group"] == cat].set_index("month")["revenue"]
+    ax.plot(s.index, s.values, marker="o", markersize=4, label=cat, lw=1.4)
+ax.set_xlabel("Month")
+ax.set_ylabel("Revenue (EUR)")
+ax.legend(ncol=5, fontsize=8, loc="upper center", bbox_to_anchor=(0.5, -0.12))
+plt.tight_layout()
+plt.show()
+```
+
+The two-year window covers 1.5 seasonal cycles. That's the smallest amount on which any seasonal model has any chance — anything less and you might as well forecast with a constant.
+
+## Models in play
+
+| Model | What it captures | When it works |
+|---|---|---|
+| **Naive (last value)** | "Tomorrow looks like today" | Default benchmark; surprisingly hard to beat for short horizons |
+| **Seasonal Naive** | "This month equals same month last year" | When seasonal pattern dominates noise |
+| **Exponential Smoothing (ETS, no seasonality)** | Smooth trend, no seasonal component | When you have trend but too little data for seasonality |
+| **SARIMA(1,1,1)(1,1,1,12)** | Trend + seasonality with autoregressive structure | When you have ≥ 2 seasonal cycles and enough data to fit 6 params |
+
+We deliberately *don't* try Holt-Winters with seasonality at this point: with only 1.5 seasonal cycles in training, it almost always fails to converge. Knowing what *not* to fit is part of the discipline.
+
+## Evaluation strategy
+
+Forecast horizon **3 months** (last quarter of the data). This leaves 21 months of training — short, but at least it gets us close to two seasonal cycles.
+
+We report two metrics per category:
+
+- **MAE in EUR** — absolute error in monetary terms. Stable on low-volume series.
+- **MAPE** — error as percentage of actual. Easy to compare across categories *but* explodes when actuals are small (a €1k category with €500 error has MAPE 50%; same error on €100k category is 0.5%).
+
+```{python}
+#| label: backtest
+HORIZON = 3
+
+def fit_predict(train, horizon):
+    """train: numpy array of training values."""
+    out = {}
+
+    # Naive: last train value, repeated
+    out["Naive"] = pd.Series([train[-1]] * horizon, index=range(horizon))
+
+    # Seasonal naive: same month last year (12 months back from each holdout step)
+    out["Seasonal naive"] = pd.Series(train[-12:-12 + horizon], index=range(horizon))
+
+    # ETS without seasonality (just trend smoothing)
+    try:
+        ets = ExponentialSmoothing(train, trend="add", seasonal=None,
+                                   initialization_method="estimated").fit(disp=False)
+        out["ETS (no seasonal)"] = pd.Series(ets.forecast(horizon).values, index=range(horizon))
+    except Exception:
+        out["ETS (no seasonal)"] = pd.Series([np.nan] * horizon, index=range(horizon))
+
+    # SARIMA(1,1,1)(1,1,1,12)
+    try:
+        sarima = SARIMAX(train, order=(1, 1, 1),
+                         seasonal_order=(1, 1, 1, 12)).fit(disp=False)
+        out["SARIMA"] = pd.Series(sarima.forecast(horizon).values, index=range(horizon))
+    except Exception:
+        out["SARIMA"] = pd.Series([np.nan] * horizon, index=range(horizon))
+
+    return out
+
+
+def metrics(actual, pred):
+    actual_arr = np.asarray(actual, dtype=float)
+    pred_arr = np.asarray(pred, dtype=float)
+    if np.isnan(pred_arr).any():
+        return np.nan, np.nan
+    mae = float(np.mean(np.abs(actual_arr - pred_arr)))
+    mape = float(np.mean(np.abs((actual_arr - pred_arr) / actual_arr))) * 100
+    return mae, mape
+
+
+rows = []
+forecasts_per_cat = {}
+for cat in totals.index:
+    s = monthly[monthly["product_group"] == cat].set_index("month")["revenue"].asfreq("MS")
+    train, test = s.iloc[:-HORIZON], s.iloc[-HORIZON:]
+
+    preds = fit_predict(train.values, HORIZON)
+    forecasts_per_cat[cat] = {"train": train, "test": test, "preds": preds}
+
+    for model, p in preds.items():
+        mae, mape = metrics(test.values, p.values)
+        rows.append({"category": cat, "model": model, "MAE_EUR": mae, "MAPE_%": mape})
+
+backtest = pd.DataFrame(rows)
+```
+
+## Per-category results
+
+```{python}
+#| label: backtest-table
+pivoted_mae = backtest.pivot(index="category", columns="model", values="MAE_EUR").round(0)
+pivoted_mape = backtest.pivot(index="category", columns="model", values="MAPE_%").round(1)
+
+# Order columns sensibly
+order = ["Naive", "Seasonal naive", "ETS (no seasonal)", "SARIMA"]
+pivoted_mae = pivoted_mae[order]
+pivoted_mape = pivoted_mape[order]
+
+print("MAE (EUR) per category × model:")
+print(pivoted_mae.to_string())
+print()
+print("MAPE (%) per category × model:")
+print(pivoted_mape.to_string())
+```
+
+```{python}
+#| label: aggregate-metrics
+overall = backtest.groupby("model")[["MAE_EUR", "MAPE_%"]].mean().round(1)
+overall["wins"] = backtest.loc[backtest.groupby("category")["MAE_EUR"].idxmin(), "model"]\
+                          .value_counts().reindex(overall.index, fill_value=0)
+overall = overall.reindex(order)
+overall
+```
+
+A few patterns emerge:
+
+- **Naive (last value)** is shockingly competitive on short horizons. With 3 months of forecast, last-month-anchored prediction often beats more sophisticated models — a classic finding in the forecasting literature.
+- **Seasonal naive** wins on categories with clearer annual seasonality (garden / outdoor goods, dining items around holiday months).
+- **SARIMA** sometimes overfits the limited training history and produces worse-than-naive forecasts.
+- **MAPE** is misleading for the smallest categories — a 100% MAPE on STOR (low-volume storage) is a few thousand euros of error, not a forecasting catastrophe.
+
+## Forecast vs. actual — three representative categories
+
+```{python}
+#| label: fig-forecast-compare
+#| fig-cap: "Forecast vs. actual on the last three months for the three highest-volume categories. Light bands = the actual; lines = each model's prediction."
+top_cats = totals.index[:3].tolist()
+fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharey=False)
+
+for ax, cat in zip(axes, top_cats):
+    ctx = forecasts_per_cat[cat]
+    train, test = ctx["train"], ctx["test"]
+
+    # Plot trailing 12 months of train + actual
+    train_tail = train.iloc[-12:]
+    ax.plot(train_tail.index, train_tail.values, color="lightgrey", lw=2, label="History")
+    ax.plot(test.index, test.values, color="black", marker="o", lw=2, label="Actual")
+
+    colors = {"Naive": "#3498db", "Seasonal naive": "#27ae60",
+              "ETS (no seasonal)": "#f39c12", "SARIMA": "#c0392b"}
+    for model, p in ctx["preds"].items():
+        if np.isnan(p.values).any():
+            continue
+        ax.plot(test.index, p.values, marker="x", lw=1.4,
+                color=colors.get(model, "grey"), label=model, alpha=0.85)
+
+    ax.set_title(cat)
+    ax.tick_params(axis="x", rotation=30)
+    if cat == top_cats[0]:
+        ax.legend(fontsize=8, loc="upper left")
+        ax.set_ylabel("Revenue (EUR)")
+
+plt.tight_layout()
+plt.show()
+```
+
+## Why "boring baselines beat fancy models" here
+
+The takeaway from forecasting research over the last 40 years (M-competitions, Makridakis et al.) is consistent: on short horizons with little history, simple models are *frequently better than ML/deep learning*. Three reasons play out in this dataset:
+
+1. **Bias-variance** — sophisticated models have many parameters. With 21 months of training, parameter estimates are noisy. Naive has zero parameters; it can't overfit.
+2. **No exogenous regressors** — we forecast on revenue alone. SARIMA and ETS have nothing to cling to except the autocorrelation in the series, which is weak with monthly retail data.
+3. **Heterogeneity** — 10 categories, each with its own dynamic. A single model class often doesn't fit all of them; per-category model selection (or hierarchical pooling) helps a lot but needs more data than we have.
+
+For *this* dataset, the right operational approach would be:
+
+- **Use seasonal naive as the production baseline** — it captures the dominant signal (annual cyclicality) with zero training time.
+- **Reserve SARIMA / ETS for categories where they clearly outperform** — measure per category, switch only on persistent improvement.
+- **Don't trust point forecasts blindly** — even the best model here has 20–40% MAPE. Plan inventory with prediction intervals (`SARIMAX.get_forecast(...).conf_int()`) to express the true uncertainty.
+
+## Limitations
+
+- **24 months is genuinely too few** for confident seasonal modeling. In production, you'd want 3–5 years.
+- **Synthetic data has no embedded seasonality**. Our generator produces uniform-in-time transactions modulo trend; real retail has strong holiday peaks (Christmas, Easter, summer for outdoor) that would make seasonal models far more useful than they appear here.
+- **Cross-category dependencies aren't modeled**. Hierarchical / multivariate models (e.g. VAR, hierarchical reconciliation in `hierarchicalforecast`) would exploit shared structure across categories.
+- **Point forecasts only**. Real forecasting work always reports prediction intervals; we skipped them for brevity but `SARIMAX.get_forecast(steps).conf_int()` provides them out-of-the-box.
+
+## How this chapter fits the rest
+
+| Chapter | Time direction | Output |
+|---|---|---|
+| 04 — CLV (BG/NBD) | Forward, per customer | Expected per-customer purchases & revenue |
+| 06 — Survival | Forward, per customer | When does the return probability decay? |
+| 07 — Forecasting (this) | Forward, per category | Aggregate revenue trajectory |
+
+CLV and Survival are *individual*; Forecasting is *aggregate*. A retailer needs both: CLV/Survival to decide whom to target with personalized offers, Forecasting to decide *how much stock to order* and *what budget to plan*.

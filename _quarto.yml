@@ -20,6 +20,8 @@ website:
             text: Customer Lifetime Value
           - href: 06-survival.qmd
             text: Survival (Time-to-Repeat)
+          - href: 07-forecasting.qmd
+            text: Demand Forecasting
       - href: 05-insights.qmd
         text: Insights
       - href: dashboard.html
