@@ -20,11 +20,20 @@ import pandas as pd
 
 
 SEED = 42
-N_TRANSACTIONS = 3500
+N_CUSTOMERS = 2400
 DATE_START = date(2015, 7, 1)
 DATE_END = date(2017, 6, 30)
 VAT = 0.19
 COST_RATIO = 0.55  # net_cost ≈ 55% of gross_price
+
+# Customer-level parameters (BG/NBD-shaped so chapter 04 can fit a model that
+# matches the generative process, while still producing realistic spread).
+# Each customer has an exponential "lifetime" and, while alive, a Gamma-distributed
+# transaction rate. Censoring at window_end produces a mix of churned and active
+# customers — exactly the situation BG/NBD is designed for.
+LIFETIME_DAYS_MEAN = 250
+TX_RATE_GAMMA_SHAPE = 2.0
+TX_RATE_GAMMA_SCALE = 0.5  # mean rate = shape * scale = 1.0 transactions / year
 
 OUTPUT_PATH = (
     Path(__file__).resolve().parent.parent
@@ -241,6 +250,35 @@ def _add_with_copurchase(
             seen_names.add(partner_name)
 
 
+def _generate_customer_tx_dates(
+    rng: np.random.Generator, window_days: int
+) -> list[date]:
+    """Return the list of transaction dates for a single customer.
+
+    Draws a first-purchase date uniformly in the window, then an exponential
+    "lifetime" after which the customer goes dormant. While alive, repeat
+    transactions occur at a Gamma-distributed rate.
+    """
+    first_offset = int(rng.integers(0, window_days))
+    first_date = DATE_START + timedelta(days=first_offset)
+
+    lifetime_days = float(rng.exponential(LIFETIME_DAYS_MEAN))
+    last_active = first_date + timedelta(days=int(lifetime_days))
+    last_active = min(last_active, DATE_END)
+    observed_days = (last_active - first_date).days
+
+    if observed_days <= 0:
+        return [first_date]
+
+    rate_per_year = float(rng.gamma(TX_RATE_GAMMA_SHAPE, TX_RATE_GAMMA_SCALE))
+    n_repeat = int(rng.poisson(rate_per_year * observed_days / 365.25))
+    if n_repeat == 0:
+        return [first_date]
+
+    offsets = sorted(int(o) for o in rng.integers(1, observed_days + 1, size=n_repeat))
+    return [first_date] + [first_date + timedelta(days=o) for o in offsets]
+
+
 def generate_dataset() -> pd.DataFrame:
     rng = np.random.default_rng(SEED)
     window_days = (DATE_END - DATE_START).days
@@ -250,58 +288,64 @@ def generate_dataset() -> pd.DataFrame:
         by_name.setdefault(article.article_name, []).append(article)
 
     rows: list[dict] = []
-    for tx_idx in range(N_TRANSACTIONS):
-        tx_id = f"T{tx_idx + 1:05d}"
-        days_offset = int(rng.integers(0, window_days + 1))
-        tx_date = DATE_START + timedelta(days=days_offset)
-        date_progress = days_offset / window_days
+    tx_counter = 0
+    for c_idx in range(N_CUSTOMERS):
+        customer_id = f"C{c_idx + 1:05d}"
+        tx_dates = _generate_customer_tx_dates(rng, window_days)
 
-        # Date-conditional selection weights drive temporal trends.
-        weights = np.array(
-            [a.popularity * _trend_weight(a.trend, date_progress) for a in CATALOG]
-        )
-        weights = weights / weights.sum()
+        for tx_date in tx_dates:
+            tx_counter += 1
+            tx_id = f"T{tx_counter:05d}"
+            days_offset = (tx_date - DATE_START).days
+            date_progress = days_offset / window_days
 
-        seed = CATALOG[int(rng.choice(len(CATALOG), p=weights))]
-        basket: list[Article] = []
-        seen_names: set[str] = set()
-        _add_with_copurchase(seed, basket, seen_names, rng, by_name)
-
-        n_extras = int(rng.choice([0, 1, 2], p=[0.65, 0.25, 0.10]))
-        for _ in range(n_extras):
-            extra = CATALOG[int(rng.choice(len(CATALOG), p=weights))]
-            _add_with_copurchase(extra, basket, seen_names, rng, by_name)
-
-        basket = basket[:6]
-
-        for line_no, item in enumerate(basket, start=1):
-            quantity = _pick_quantity(rng, item.article_name)
-            gross = item.base_price * float(rng.uniform(0.95, 1.05))
-            net = gross / (1 + VAT)
-            cost = gross * COST_RATIO
-            discount_type, discount_amount, discount_pct, discount_reason = (
-                _generate_discount(rng, gross)
+            # Date-conditional selection weights drive temporal trends.
+            weights = np.array(
+                [a.popularity * _trend_weight(a.trend, date_progress) for a in CATALOG]
             )
-            rows.append(
-                {
-                    "transaction_id": tx_id,
-                    "line_item": line_no,
-                    "article_id": item.article_id,
-                    "article_name": item.article_name,
-                    "model": item.model,
-                    "quantity": quantity,
-                    "gross_price": round(gross, 2),
-                    "net_price": round(net, 2),
-                    "net_cost": round(cost, 2),
-                    "date": tx_date.isoformat(),
-                    "product_group": item.product_group,
-                    "supplier_id": item.supplier_id,
-                    "discount_type": discount_type,
-                    "discount_amount": round(discount_amount, 2),
-                    "discount_percentage": round(discount_pct, 4),
-                    "discount_reason": discount_reason,
-                }
-            )
+            weights = weights / weights.sum()
+
+            seed = CATALOG[int(rng.choice(len(CATALOG), p=weights))]
+            basket: list[Article] = []
+            seen_names: set[str] = set()
+            _add_with_copurchase(seed, basket, seen_names, rng, by_name)
+
+            n_extras = int(rng.choice([0, 1, 2], p=[0.65, 0.25, 0.10]))
+            for _ in range(n_extras):
+                extra = CATALOG[int(rng.choice(len(CATALOG), p=weights))]
+                _add_with_copurchase(extra, basket, seen_names, rng, by_name)
+
+            basket = basket[:6]
+
+            for line_no, item in enumerate(basket, start=1):
+                quantity = _pick_quantity(rng, item.article_name)
+                gross = item.base_price * float(rng.uniform(0.95, 1.05))
+                net = gross / (1 + VAT)
+                cost = gross * COST_RATIO
+                discount_type, discount_amount, discount_pct, discount_reason = (
+                    _generate_discount(rng, gross)
+                )
+                rows.append(
+                    {
+                        "customer_id": customer_id,
+                        "transaction_id": tx_id,
+                        "line_item": line_no,
+                        "article_id": item.article_id,
+                        "article_name": item.article_name,
+                        "model": item.model,
+                        "quantity": quantity,
+                        "gross_price": round(gross, 2),
+                        "net_price": round(net, 2),
+                        "net_cost": round(cost, 2),
+                        "date": tx_date.isoformat(),
+                        "product_group": item.product_group,
+                        "supplier_id": item.supplier_id,
+                        "discount_type": discount_type,
+                        "discount_amount": round(discount_amount, 2),
+                        "discount_percentage": round(discount_pct, 4),
+                        "discount_reason": discount_reason,
+                    }
+                )
 
     return pd.DataFrame(rows)
 
@@ -311,15 +355,27 @@ def main() -> None:
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(OUTPUT_PATH, index=False, sep=";")
 
+    n_customers = df["customer_id"].nunique()
     n_tx = df["transaction_id"].nunique()
     n_rows = len(df)
     n_articles = df["article_id"].nunique()
     n_names = df["article_name"].nunique()
     avg_basket = n_rows / n_tx
+    avg_tx_per_customer = n_tx / n_customers
+    tx_per_customer = df.groupby("customer_id")["transaction_id"].nunique()
     print(f"Wrote {OUTPUT_PATH}")
     print(
         f"  {n_rows} line items across {n_tx} transactions "
-        f"(avg basket size {avg_basket:.2f})"
+        f"from {n_customers} customers"
+    )
+    print(
+        f"  avg basket size {avg_basket:.2f}, "
+        f"avg transactions/customer {avg_tx_per_customer:.2f}"
+    )
+    print(
+        f"  one-time customers: {(tx_per_customer == 1).mean():.1%},  "
+        f"repeat (>=2): {(tx_per_customer >= 2).mean():.1%},  "
+        f"top buyers (>=5): {(tx_per_customer >= 5).mean():.1%}"
     )
     print(f"  {n_articles} unique article_ids, {n_names} unique article_names")
     print(f"  date range {df['date'].min()} to {df['date'].max()}")

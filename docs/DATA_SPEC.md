@@ -8,6 +8,7 @@ The synthetic dataset and the cleaned version of the real dataset share this sch
 
 | Column | Type | Description |
 |---|---|---|
+| `customer_id` | string | Customer identifier (one per repeat-buyer; `transaction_id` is unique per basket) |
 | `transaction_id` | string | Purchase contract identifier (one per basket / customer visit) |
 | `line_item` | int | Position within the transaction (1, 2, 3, …) |
 | `article_id` | string | SKU identifier (multiple SKUs may share the same `article_name`) |
@@ -61,12 +62,24 @@ The synthesis is calibrated so that the three downstream analyses produce non-tr
 
 | Quantity | Value | Rationale |
 |---|---|---|
-| Transactions | 3,500 | Comparable to original |
-| Line items | ~6,300 | Average basket size ~1.8, comparable to the original's ~7,244 |
+| Customers | 2,400 | Heavy-tailed transaction count per customer (see below) |
+| Transactions | ~3,500 | Average ~1.46 transactions per customer |
+| Line items | ~6,400 | Average basket size ~1.8 |
 | Date range | 2015-07-01 to 2017-06-30 | Two years; midpoint 2016-06-30 used as BCG split |
 | Unique articles (`article_id`) | 66 | |
 | Unique article names | 40 | Multiple SKUs per name (different models / price points) |
 | Product groups | 10 | DINI, LIVI, BEDR, OFFI, LIGH, ELEC, DECO, STOR, KITC, OUTD |
+
+### Customer-level structure (for CLV / BG/NBD)
+
+Customers are generated with a BG/NBD-shaped process so that the CLV chapter can fit a model whose assumptions are actually satisfied by the data:
+
+- **First purchase date** — uniform within the window. Customers arriving late are observed for less time (right-censored).
+- **Lifetime** — exponential with mean 250 days. Most customers churn well before the window ends.
+- **Transaction rate while alive** — Gamma-distributed (shape 2.0, scale 0.5 → mean ≈ 1 tx/year). Heterogeneous across customers.
+- **Repeat purchases** — Poisson with rate · observed-lifetime.
+
+This produces the canonical retail mix: ~70% one-time buyers, ~25% with 2–4 transactions, ~5% with 5+. A non-trivial fraction of customers is "still alive" at window end (last purchase recent, lifetime not yet expired) — exactly the situation BG/NBD is designed to disentangle from "permanently churned" (last purchase long ago, likely dead).
 
 ### Co-purchase patterns (for association rules)
 

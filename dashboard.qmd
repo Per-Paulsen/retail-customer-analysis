@@ -1,0 +1,289 @@
+---
+title: "Retail Analytics Dashboard"
+format:
+  dashboard:
+    orientation: rows
+    nav-buttons:
+      - icon: book
+        href: index.html
+        text: Full report
+      - icon: github
+        href: https://github.com/Per-Paulsen/retail-customer-analysis
+---
+
+```{python}
+#| context: setup
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+from lifetimes import BetaGeoFitter, GammaGammaFitter
+from lifetimes.utils import summary_data_from_transaction_data
+
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+SPLIT = pd.Timestamp("2016-06-30")
+REF_DATE = pd.Timestamp("2017-06-30")
+
+# --- Headline KPIs ----------------------------------------------------------
+total_revenue   = df["gross_price"].sum()
+n_customers     = df["customer_id"].nunique()
+n_transactions  = df["transaction_id"].nunique()
+n_articles      = df["article_name"].nunique()
+avg_basket_eur  = df.groupby("transaction_id")["gross_price"].sum().mean()
+
+# --- BCG (share × growth) ---------------------------------------------------
+df["period"] = np.where(df["date"] <= SPLIT, "p1", "p2")
+period_rev = (
+    df.groupby(["article_name", "period"])["gross_price"].sum()
+      .unstack(fill_value=0.0)
+      .rename(columns={"p1": "rev_p1", "p2": "rev_p2"})
+)
+period_rev["revenue"] = period_rev["rev_p1"] + period_rev["rev_p2"]
+period_rev["share"]   = period_rev["revenue"] / period_rev["revenue"].sum()
+period_rev["growth"]  = np.where(
+    period_rev["rev_p1"] > 0,
+    (period_rev["rev_p2"] - period_rev["rev_p1"]) / period_rev["rev_p1"],
+    np.where(period_rev["rev_p2"] > 0, 1.0, -1.0),
+)
+X_bcg = StandardScaler().fit_transform(period_rev[["growth", "share"]])
+km_bcg = KMeans(n_clusters=4, random_state=42, n_init=10).fit(X_bcg)
+period_rev["cluster"] = km_bcg.labels_
+centers_bcg = pd.DataFrame(km_bcg.cluster_centers_, columns=["growth_z", "share_z"])
+centers_bcg["weight"] = 0.5 * centers_bcg["growth_z"] + 0.5 * centers_bcg["share_z"]
+centers_bcg["rank"]   = centers_bcg["weight"].rank(ascending=False).astype(int)
+period_rev["rank"]    = period_rev["cluster"].map(centers_bcg["rank"])
+
+def signed_cbrt(x):
+    return np.sign(x) * np.cbrt(np.abs(x))
+
+bcg_plot = period_rev.reset_index().assign(
+    share_t=lambda d: signed_cbrt(d["share"]),
+    growth_t=lambda d: signed_cbrt(d["growth"]),
+    rank_str=lambda d: d["rank"].astype(str),
+)
+
+# --- RFM (article-level) ----------------------------------------------------
+rfm_articles = (
+    df.groupby("article_name")
+      .agg(frequency=("article_name", "count"),
+           value=("gross_price", "sum"),
+           last_sold=("date", "max"))
+)
+rfm_articles["recency"] = (REF_DATE - rfm_articles["last_sold"]).dt.days / 30.4375
+
+X_rfm = StandardScaler().fit_transform(rfm_articles[["recency", "frequency", "value"]])
+km_rfm = KMeans(n_clusters=4, random_state=42, n_init=10).fit(X_rfm)
+rfm_articles["cluster"] = km_rfm.labels_
+centers_rfm = pd.DataFrame(km_rfm.cluster_centers_, columns=["rec_z", "freq_z", "val_z"])
+centers_rfm["score"] = (centers_rfm["freq_z"] + centers_rfm["val_z"] - centers_rfm["rec_z"]) / 3
+centers_rfm["rank"]  = centers_rfm["score"].rank(ascending=False).astype(int)
+rfm_articles["rank"] = rfm_articles["cluster"].map(centers_rfm["rank"])
+rfm_articles_reset = rfm_articles.reset_index().assign(rank_str=lambda d: d["rank"].astype(str))
+
+# --- Association rules ------------------------------------------------------
+baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
+te = TransactionEncoder()
+basket_matrix = pd.DataFrame(te.fit_transform(baskets), columns=te.columns_)
+freq_items = apriori(basket_matrix, min_support=0.001, use_colnames=True)
+rules = association_rules(freq_items, num_itemsets=len(basket_matrix),
+                          metric="confidence", min_threshold=0.5)
+simple = rules[
+    (rules["antecedents"].apply(len) == 1) & (rules["consequents"].apply(len) == 1)
+].copy()
+simple["antecedent"] = simple["antecedents"].apply(lambda s: next(iter(s)))
+simple["consequent"] = simple["consequents"].apply(lambda s: next(iter(s)))
+simple = simple.sort_values("confidence", ascending=False).reset_index(drop=True)
+
+top_rule_str = f"{simple.iloc[0]['antecedent']} → {simple.iloc[0]['consequent']}"
+top_rule_conf = simple.iloc[0]["confidence"]
+
+# --- CLV --------------------------------------------------------------------
+tx = df.groupby(["customer_id", "transaction_id", "date"], as_index=False)["gross_price"].sum()
+clv_summary = summary_data_from_transaction_data(
+    tx, "customer_id", "date", monetary_value_col="gross_price",
+    observation_period_end=tx["date"].max(), freq="D",
+)
+bgf = BetaGeoFitter(penalizer_coef=0.001).fit(
+    clv_summary["frequency"], clv_summary["recency"], clv_summary["T"]
+)
+returning = clv_summary[clv_summary["frequency"] >= 1].copy()
+ggf = GammaGammaFitter(penalizer_coef=0.01).fit(returning["frequency"], returning["monetary_value"])
+returning["clv_12m"] = ggf.customer_lifetime_value(
+    bgf, returning["frequency"], returning["recency"], returning["T"],
+    returning["monetary_value"], time=12, discount_rate=0.01, freq="D",
+)
+returning_sorted = returning.sort_values("clv_12m", ascending=False)
+returning_sorted["cum_pct"] = returning_sorted["clv_12m"].cumsum() / returning_sorted["clv_12m"].sum()
+returning_sorted["cust_pct"] = (np.arange(len(returning_sorted)) + 1) / len(returning_sorted)
+
+clv_summary["p_alive"] = bgf.conditional_probability_alive(
+    clv_summary["frequency"], clv_summary["recency"], clv_summary["T"]
+)
+```
+
+# Overview
+
+## Row {height=20%}
+
+```{python}
+#| content: valuebox
+#| title: "Total revenue"
+#| icon: cash-stack
+#| color: primary
+dict(value=f"€{total_revenue:,.0f}")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Customers"
+#| icon: people-fill
+#| color: secondary
+dict(value=f"{n_customers:,}")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Transactions"
+#| icon: bag-check-fill
+#| color: success
+dict(value=f"{n_transactions:,}")
+```
+
+```{python}
+#| content: valuebox
+#| title: "Top rule"
+#| icon: arrow-right-circle
+#| color: warning
+dict(value=top_rule_str, caption=f"{top_rule_conf:.0%} confidence")
+```
+
+## Row
+
+```{python}
+#| title: "Revenue trajectory by month"
+monthly = (
+    df.assign(month=df["date"].dt.to_period("M").dt.to_timestamp())
+      .groupby("month")["gross_price"].sum().reset_index()
+)
+fig = px.line(monthly, x="month", y="gross_price", markers=True,
+              labels={"month": "Month", "gross_price": "Revenue (EUR)"})
+fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+fig.show()
+```
+
+```{python}
+#| title: "Top 10 articles by revenue"
+top_articles = (
+    df.groupby("article_name")["gross_price"].sum()
+      .sort_values(ascending=True).tail(10).reset_index()
+)
+fig = px.bar(top_articles, x="gross_price", y="article_name", orientation="h",
+             labels={"gross_price": "Revenue (EUR)", "article_name": ""},
+             color="gross_price", color_continuous_scale="viridis")
+fig.update_layout(margin=dict(l=20, r=20, t=20, b=20), coloraxis_showscale=False)
+fig.show()
+```
+
+# Products
+
+## Row
+
+```{python}
+#| title: "BCG quadrant — share × growth"
+fig = px.scatter(
+    bcg_plot, x="share_t", y="growth_t", color="rank_str", hover_name="article_name",
+    color_discrete_sequence=["#27ae60", "#3498db", "#f39c12", "#c0392b"],
+    category_orders={"rank_str": ["1", "2", "3", "4"]},
+    labels={"share_t": "Market share (signed cube-root)",
+            "growth_t": "Growth rate (signed cube-root)",
+            "rank_str": "Cluster rank"},
+)
+fig.add_hline(y=bcg_plot["growth_t"].mean(), line_dash="dash", line_color="grey", opacity=0.5)
+fig.add_vline(x=bcg_plot["share_t"].mean(),  line_dash="dash", line_color="grey", opacity=0.5)
+fig.update_traces(marker=dict(size=10, opacity=0.85))
+fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+fig.show()
+```
+
+```{python}
+#| title: "RFM 3D — recency × frequency × value"
+fig = px.scatter_3d(
+    rfm_articles_reset, x="recency", y="frequency", z="value",
+    color="rank_str", hover_name="article_name",
+    color_discrete_sequence=["#27ae60", "#3498db", "#f39c12", "#c0392b"],
+    category_orders={"rank_str": ["1", "2", "3", "4"]},
+    labels={"recency": "Recency (mo)", "frequency": "Frequency",
+            "value": "Value (EUR)", "rank_str": "Cluster rank"},
+)
+fig.update_traces(marker=dict(size=5, opacity=0.85))
+fig.update_layout(margin=dict(l=0, r=0, t=20, b=0), scene=dict(aspectmode="cube"))
+fig.show()
+```
+
+# Customers
+
+## Row
+
+```{python}
+#| title: "12-month CLV — cumulative concentration"
+fig = px.line(returning_sorted, x="cust_pct", y="cum_pct",
+              labels={"cust_pct": "Cumulative share of returning customers (sorted by CLV)",
+                      "cum_pct":  "Cumulative share of forecast 12-mo revenue"})
+fig.add_shape(type="line", x0=0, y0=0, x1=1, y1=1,
+              line=dict(color="grey", dash="dot"))
+markers_x = [0.10, 0.20, 0.30, 0.50]
+markers_y = [returning_sorted.iloc[int(q * len(returning_sorted)) - 1]["cum_pct"] for q in markers_x]
+fig.add_scatter(x=markers_x, y=markers_y, mode="markers+text",
+                text=[f"top {int(q*100)}% → {y:.0%}" for q, y in zip(markers_x, markers_y)],
+                textposition="top center", marker=dict(color="darkorange", size=10),
+                showlegend=False)
+fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+fig.show()
+```
+
+```{python}
+#| title: "P(alive) distribution"
+ret_p = clv_summary[clv_summary["frequency"] >= 1]
+one_p = clv_summary[clv_summary["frequency"] == 0]
+fig = go.Figure()
+fig.add_trace(go.Histogram(x=ret_p["p_alive"], name=f"Returning (n={len(ret_p)})",
+                           marker_color="steelblue", opacity=0.8, nbinsx=30))
+fig.add_trace(go.Histogram(x=one_p["p_alive"], name=f"One-time (n={len(one_p)})",
+                           marker_color="lightgrey", opacity=0.8, nbinsx=30))
+fig.update_layout(barmode="overlay", margin=dict(l=20, r=20, t=20, b=20),
+                  xaxis_title="P(alive) at observation end", yaxis_title="Count")
+fig.show()
+```
+
+# Rules
+
+## Row
+
+```{python}
+#| title: "Top simple rules (one antecedent → one consequent)"
+display_rules = simple.head(15).copy()
+display_rules["support"]    = display_rules["support"].round(4)
+display_rules["confidence"] = display_rules["confidence"].round(3)
+display_rules["lift"]       = display_rules["lift"].round(2)
+display_rules[["antecedent", "consequent", "support", "confidence", "lift"]]
+```
+
+```{python}
+#| title: "Rule landscape — support × confidence (color = lift)"
+rules_plot = rules.copy()
+rules_plot["antecedents"] = rules_plot["antecedents"].apply(lambda s: ", ".join(sorted(s)))
+rules_plot["consequents"] = rules_plot["consequents"].apply(lambda s: ", ".join(sorted(s)))
+fig = px.scatter(
+    rules_plot, x="support", y="confidence", color="lift",
+    hover_data={"antecedents": True, "consequents": True},
+    color_continuous_scale="viridis", log_x=True,
+    labels={"support": "Support (log scale)", "confidence": "Confidence", "lift": "Lift"},
+)
+fig.update_traces(marker=dict(size=8, opacity=0.7))
+fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
+fig.show()
+```

@@ -14,6 +14,12 @@ website:
         text: BCG Clustering
       - href: 03-cluster-3d-rfm.qmd
         text: RFM Clustering
+      - href: 04-clv-bgnbd.qmd
+        text: CLV
+      - href: 05-insights.qmd
+        text: Insights
+      - href: dashboard.html
+        text: Dashboard
     right:
       - icon: github
         href: https://github.com/Per-Paulsen/retail-customer-analysis

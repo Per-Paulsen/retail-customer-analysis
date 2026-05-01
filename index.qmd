@@ -2,15 +2,17 @@
 title: "Retail Customer & Basket Analysis"
 ---
 
-End-to-end customer and product analytics on a synthetic retail transaction dataset, demonstrating three classic techniques in both R and Python.
+End-to-end customer and product analytics on a synthetic retail transaction dataset, demonstrating five techniques in both R and Python — from classic market basket analysis to modern probabilistic CLV modeling.
 
 ## Chapters
 
 1. [Association Rules](01-association.qmd) — market basket analysis with `arules` (R) and `mlxtend` (Python), side by side.
-2. [BCG-style Clustering](02-cluster-2d-bcg.qmd) — products positioned by market share × growth rate (Python / scikit-learn).
+2. [BCG-style Clustering](02-cluster-2d-bcg.qmd) — products positioned by market share × growth (Python / scikit-learn).
 3. [RFM Clustering](03-cluster-3d-rfm.qmd) — articles segmented by Recency, Frequency, Monetary value (R / kmeans + interactive 3D with plotly).
+4. [Customer Lifetime Value](04-clv-bgnbd.qmd) — probabilistic CLV with BG/NBD + Gamma-Gamma (Python / `lifetimes`).
+5. [Insights](05-insights.qmd) — synthesis of the four upstream chapters with cross-cuts and headline recommendations.
 
-A standalone Python notebook ([`notebooks/rfm_clustering.ipynb`](notebooks/rfm_clustering.ipynb)) replays the RFM analysis end-to-end with an interactive 3D scatter — runnable in Colab without local setup.
+Plus a [**dashboard view**](dashboard.html) of the same findings, and a standalone [Python notebook](notebooks/rfm_clustering.ipynb) that replays the RFM analysis in Colab.
 
 ## Data overview
 
@@ -18,23 +20,24 @@ The dataset is synthesized to mirror a two-year transaction log from a furniture
 
 | | |
 |---|---|
-| **Rows** | ~6,300 line items |
-| **Transactions** | 3,500 baskets |
+| **Rows** | ~6,400 line items |
+| **Transactions** | ~3,500 baskets |
+| **Customers** | 2,400 (heavy-tailed transaction count, BG/NBD-shaped) |
 | **Articles** | 66 SKUs across 40 distinct product names |
 | **Date range** | 2015-07-01 to 2017-06-30 |
 | **Categories** | 10 (dining, living, bedroom, office, lighting, electronics, decor, storage, kitchen, outdoor) |
 
-The synthesis encodes co-purchase patterns (e.g. *dining_table → dining_chair* at 85%) and temporal trends (some articles grow over the window, others decline) so the downstream analyses produce non-trivial, interpretable clusters and rules. Full schema and design rationale: [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md).
+The synthesis encodes co-purchase patterns (e.g. *dining_table → dining_chair* at 85%), temporal trends (some articles grow over the window, others decline), and customer-level structure (lifetime + transaction rate per customer, BG/NBD-style). Full schema and design rationale: [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md).
+
+For methods we considered and deferred (survival analysis, demand forecasting, prod2vec, causal uplift), see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Reproducing locally
 
 ```bash
-# Generate the synthetic dataset (deterministic, seed=42)
+# Generate the deterministic synthetic dataset (seed=42)
 python scripts/generate_synthetic_data.py
 
 # Render the site
 quarto render
-
-# Serve locally with auto-reload
-quarto preview
+quarto preview          # auto-reload during editing
 ```

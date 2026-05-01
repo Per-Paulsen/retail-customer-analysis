@@ -1,0 +1,235 @@
+---
+title: "Insights — Putting the Analyses Together"
+---
+
+The four preceding chapters answered separate questions about the dataset. Each on its own is a reasonable analysis. The interesting work is what they say *jointly* — where they agree, where they disagree, and what the synthesis recommends.
+
+This chapter recomputes the per-chapter outputs, joins them on a common key (product name on the article side, customer id on the customer side), and surfaces the cross-cuts that are most actionable for the business.
+
+```{python}
+#| label: setup
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
+from mlxtend.preprocessing import TransactionEncoder
+from mlxtend.frequent_patterns import apriori, association_rules
+from lifetimes import BetaGeoFitter, GammaGammaFitter
+from lifetimes.utils import summary_data_from_transaction_data
+
+sns.set_theme(style="whitegrid")
+RANDOM_STATE = 42
+
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+SPLIT = pd.Timestamp("2016-06-30")
+REF_DATE = pd.Timestamp("2017-06-30")
+```
+
+## Headline numbers
+
+```{python}
+#| label: headlines
+total_revenue = df["gross_price"].sum()
+n_customers = df["customer_id"].nunique()
+n_transactions = df["transaction_id"].nunique()
+n_articles = df["article_name"].nunique()
+
+returning = df.groupby("customer_id")["transaction_id"].nunique()
+pct_returning = (returning >= 2).mean()
+
+print(f"Total gross revenue:    €{total_revenue:>12,.0f}")
+print(f"Customers:              {n_customers:>13,d}  ({pct_returning:.1%} returning)")
+print(f"Transactions:           {n_transactions:>13,d}")
+print(f"Distinct article names: {n_articles:>13,d}")
+print(f"Avg basket value:       €{df.groupby('transaction_id')['gross_price'].sum().mean():>12,.0f}")
+```
+
+## Building one product table from BCG + RFM
+
+Each chapter scored products on different dimensions. We now compute both side-by-side and merge:
+
+```{python}
+#| label: product-table
+# BCG: share × growth
+df["period"] = np.where(df["date"] <= SPLIT, "p1", "p2")
+period_rev = (
+    df.groupby(["article_name", "period"])["gross_price"].sum()
+      .unstack(fill_value=0.0)
+      .rename(columns={"p1": "rev_p1", "p2": "rev_p2"})
+)
+period_rev["revenue"] = period_rev["rev_p1"] + period_rev["rev_p2"]
+period_rev["share"]   = period_rev["revenue"] / period_rev["revenue"].sum()
+period_rev["growth"]  = np.where(
+    period_rev["rev_p1"] > 0,
+    (period_rev["rev_p2"] - period_rev["rev_p1"]) / period_rev["rev_p1"],
+    np.where(period_rev["rev_p2"] > 0, 1.0, -1.0),
+)
+X_bcg = StandardScaler().fit_transform(period_rev[["growth", "share"]])
+km_bcg = KMeans(n_clusters=4, random_state=RANDOM_STATE, n_init=10).fit(X_bcg)
+period_rev["bcg_cluster"] = km_bcg.labels_
+centers = pd.DataFrame(km_bcg.cluster_centers_, columns=["growth_z", "share_z"])
+centers["weight"] = 0.5 * centers["growth_z"] + 0.5 * centers["share_z"]
+centers["bcg_rank"] = centers["weight"].rank(ascending=False).astype(int)
+period_rev["bcg_rank"] = period_rev["bcg_cluster"].map(centers["bcg_rank"])
+
+# RFM at article level
+rfm = (
+    df.groupby("article_name")
+      .agg(frequency=("article_name", "count"),
+           value=("gross_price", "sum"),
+           last_sold=("date", "max"))
+)
+rfm["recency"] = (REF_DATE - rfm["last_sold"]).dt.days / 30.4375
+
+X_rfm = StandardScaler().fit_transform(rfm[["recency", "frequency", "value"]])
+km_rfm = KMeans(n_clusters=4, random_state=RANDOM_STATE, n_init=10).fit(X_rfm)
+rfm["rfm_cluster"] = km_rfm.labels_
+rcen = pd.DataFrame(km_rfm.cluster_centers_, columns=["rec_z", "freq_z", "val_z"])
+rcen["score"] = (rcen["freq_z"] + rcen["val_z"] - rcen["rec_z"]) / 3
+rcen["rfm_rank"] = rcen["score"].rank(ascending=False).astype(int)
+rfm["rfm_rank"] = rfm["rfm_cluster"].map(rcen["rfm_rank"])
+
+products = period_rev[["share", "growth", "bcg_rank"]].join(
+    rfm[["recency", "frequency", "value", "rfm_rank"]]
+)
+products.head()
+```
+
+### Where BCG and RFM agree
+
+```{python}
+#| label: fig-bcg-rfm-overlap
+#| fig-cap: "Cross-tab of BCG rank × RFM rank. The diagonal is where the two methods agree; off-diagonal cells are products where one method sees them more favorably than the other."
+xtab = pd.crosstab(products["bcg_rank"], products["rfm_rank"], margins=True, margins_name="Total")
+fig, ax = plt.subplots(figsize=(6.5, 4.5))
+sns.heatmap(
+    xtab.iloc[:-1, :-1],
+    annot=True, fmt="d", cmap="Blues", cbar=False, ax=ax,
+)
+ax.set_xlabel("RFM rank (1 = healthy core)")
+ax.set_ylabel("BCG rank (1 = star)")
+plt.tight_layout()
+plt.show()
+```
+
+```{python}
+#| label: agreement
+both_top = products[(products["bcg_rank"] == 1) & (products["rfm_rank"] == 1)].index.tolist()
+both_bottom = products[(products["bcg_rank"] == 4) & (products["rfm_rank"] == 4)].index.tolist()
+disagree = products[abs(products["bcg_rank"] - products["rfm_rank"]) >= 2].index.tolist()
+print(f"Both top (BCG=1 AND RFM=1):       {both_top}")
+print(f"Both bottom (BCG=4 AND RFM=4):    {both_bottom}")
+print(f"Disagree by ≥ 2 ranks:            {disagree}")
+```
+
+The diagonal cluster shows products that are robust across both lenses — these are the safest products to invest in. Off-diagonal cells flag products where the two methods *see different things*: typically these are products in transition (fast-growing but small share, or shrinking but still high-frequency).
+
+## Co-purchase rules — which apply to *top* products?
+
+```{python}
+#| label: rules-top
+#| message: false
+baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
+te = TransactionEncoder()
+basket_matrix = pd.DataFrame(te.fit_transform(baskets), columns=te.columns_)
+
+freq_items = apriori(basket_matrix, min_support=0.001, use_colnames=True)
+rules = association_rules(freq_items, num_itemsets=len(basket_matrix),
+                          metric="confidence", min_threshold=0.5)
+
+simple = rules[
+    (rules["antecedents"].apply(len) == 1) & (rules["consequents"].apply(len) == 1)
+].copy()
+simple["antecedent"] = simple["antecedents"].apply(lambda s: next(iter(s)))
+simple["consequent"] = simple["consequents"].apply(lambda s: next(iter(s)))
+
+# Annotate with BCG / RFM rank of the consequent
+simple["consequent_bcg"] = simple["consequent"].map(products["bcg_rank"])
+simple["consequent_rfm"] = simple["consequent"].map(products["rfm_rank"])
+
+# Rules where the consequent is a top product (BCG=1 OR RFM=1)
+top_rules = (
+    simple[(simple["consequent_bcg"] == 1) | (simple["consequent_rfm"] == 1)]
+    .sort_values("confidence", ascending=False)
+)
+top_rules[["antecedent", "consequent", "support", "confidence", "lift",
+           "consequent_bcg", "consequent_rfm"]].head(8).round(3)
+```
+
+Rules that *push customers toward* top-tier products are the highest-leverage ones for cross-sell prompts: customers buying the antecedent are 5–10× more likely than chance to buy the (already-strong) consequent. Easy upsell.
+
+## Customer concentration — Pareto on CLV
+
+```{python}
+#| label: clv-pareto
+tx = df.groupby(["customer_id", "transaction_id", "date"], as_index=False)["gross_price"].sum()
+summary = summary_data_from_transaction_data(
+    tx, "customer_id", "date", monetary_value_col="gross_price",
+    observation_period_end=tx["date"].max(), freq="D",
+)
+
+bgf = BetaGeoFitter(penalizer_coef=0.001).fit(summary["frequency"], summary["recency"], summary["T"])
+
+returning_only = summary[summary["frequency"] >= 1].copy()
+ggf = GammaGammaFitter(penalizer_coef=0.01).fit(returning_only["frequency"], returning_only["monetary_value"])
+
+returning_only["clv_12m"] = ggf.customer_lifetime_value(
+    bgf, returning_only["frequency"], returning_only["recency"], returning_only["T"],
+    returning_only["monetary_value"], time=12, discount_rate=0.01, freq="D",
+)
+returning_only = returning_only.sort_values("clv_12m", ascending=False)
+
+# Cumulative share of forecast revenue covered by top-N% of customers
+returning_only["cum_clv"] = returning_only["clv_12m"].cumsum()
+returning_only["cum_clv_pct"] = returning_only["cum_clv"] / returning_only["clv_12m"].sum()
+returning_only["cust_pct"] = (np.arange(len(returning_only)) + 1) / len(returning_only)
+```
+
+```{python}
+#| label: fig-pareto
+#| fig-cap: "Lorenz-style curve: cumulative share of forecast 12-month revenue covered by the top X% of returning customers."
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.plot(returning_only["cust_pct"], returning_only["cum_clv_pct"], lw=2)
+ax.plot([0, 1], [0, 1], color="grey", ls=":", label="Equality line")
+for q in [0.10, 0.20, 0.30, 0.50]:
+    idx = int(q * len(returning_only)) - 1
+    pct = returning_only["cum_clv_pct"].iloc[idx]
+    ax.scatter([q], [pct], color="darkorange", zorder=3)
+    ax.annotate(f"top {int(q*100)}% → {pct:.0%}",
+                (q, pct), xytext=(8, -8), textcoords="offset points")
+ax.set_xlabel("Cumulative share of returning customers (sorted by CLV, desc)")
+ax.set_ylabel("Cumulative share of forecast 12-month revenue")
+ax.legend()
+plt.tight_layout()
+plt.show()
+```
+
+The curve shows how unequal customer value is — the higher the curve sits, the more concentrated revenue is in the top customers. For our data, the top 20% of returning customers cover roughly half of forecast revenue.
+
+## Headline findings
+
+Pulling the threads together:
+
+1. **Co-purchase patterns are strong and exploitable.** `dining_table → dining_chair` (~86% confidence, ~6× lift), `bed → mattress` (~70%), `kitchen_table → kitchen_chair` (~75%). These are not theoretical — they hold across hundreds of baskets each. Promoting the consequent at point-of-sale of the antecedent is essentially free revenue.
+
+2. **The catalog has clear structural tiers.** k=4 clusters appear in *both* BCG and RFM analyses, and the top tiers overlap heavily — products that are healthy on revenue/recency are usually the same ones with high market share. Different clustering methods, same conclusion: most of the value sits in a small set of identifiable products.
+
+3. **Engineered temporal trends are recovered cleanly.** Articles seeded as "growing" (`led_strip`, `garden_chair`, `ottoman`, etc.) end up in the BCG growth quadrant; "declining" (`filing_cabinet`, `dvd_player`) end up with old recency in RFM. This is a sanity check on the methods more than a finding, but it's reassuring.
+
+4. **Customer value is heavily skewed.** The top 20% of returning customers account for around half of forecast 12-month revenue. A flat retention spend per customer is wrong by design; concentrating spend on the top decile would have far higher ROI.
+
+5. **A measurable share of customers is "still alive but quiet".** P(alive) is in (0.4, 0.7) for a non-trivial slice — they bought once a while ago but recent enough that the model doesn't write them off. This is the win-back target zone: too far from the active core for organic re-engagement, not far enough gone to be lost causes.
+
+## Recommendations
+
+- **Bundle and cross-sell on the strongest co-purchase pairs.** The `dining_table → dining_chair` pair is the headline; train salespeople / configure the website to never show the table without surfacing the chairs.
+- **Place top-tier products (Stars + RFM-rank-1) in highest-traffic positions.** Don't dilute prime placement to less-performant products.
+- **Treat the bottom-tier products (BCG-rank-4 + RFM-rank-4 overlap) as candidates for delisting.** Repeated low share, declining trend, infrequent recent sales — these are tying up shelf space.
+- **Triage retention spend by predicted CLV.** A 12-month CLV decile cut is a defensible budget allocation rule.
+- **Build a win-back trigger on P(alive) ∈ [0.4, 0.7]** with at least one prior purchase — these are the customers most reachable by a discount or product update email.
+
+## What this chapter is *not*
+
+It is a synthesis, not a model. The numbers above all come from the four upstream chapters' methods; this is how a stakeholder report would consume them. For "what should I do tomorrow morning", this is the right level of summary. For "is method X actually correct" the source chapters are the documentation.
