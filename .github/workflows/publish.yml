@@ -14,6 +14,11 @@ concurrency:
   group: pages
   cancel-in-progress: true
 
+env:
+  # Opt all JavaScript actions onto Node 24 ahead of GitHub's June 2026 default
+  # switch. After that date this becomes a no-op and can be removed.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     runs-on: ubuntu-latest
