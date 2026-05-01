@@ -25,10 +25,18 @@ jobs:
           r-version: "4.5"
           use-public-rspm: true
 
+      - name: Install minimal system libraries for R packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libglpk-dev libxml2-dev
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         env:
-          # plotly's webshot2 dep is mapped to Chromium via xtradeb/apps PPA,
-          # which times out unreliably. We render to HTML, no Chromium needed.
+          # pak otherwise tries to install Chromium via the xtradeb/apps PPA
+          # for webshot2 (transitive dep of plotly). The PPA is flaky and not
+          # actually needed — we render to HTML where plotly is interactive.
+          # Whatever non-default libs the remaining packages need are
+          # installed explicitly in the previous step.
           PKG_SYSREQS: "false"
         with:
           packages: |
