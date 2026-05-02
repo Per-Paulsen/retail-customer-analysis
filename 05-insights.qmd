@@ -2,9 +2,20 @@
 title: "Insights — Putting the Analyses Together"
 ---
 
-The four preceding chapters answered separate questions about the dataset. Each on its own is a reasonable analysis. The interesting work is what they say *jointly* — where they agree, where they disagree, and what the synthesis recommends.
+The eight preceding analysis chapters each answer a different question. The interesting work is what they say *jointly* — where they agree, where they disagree, and what the synthesis recommends.
 
 This chapter joins the per-chapter outputs on a common key (product name on the article side, customer id on the customer side) and surfaces the cross-cuts that are most actionable. **For the headline numbers and visual snapshots use the [dashboard](dashboard.html); this page is the prose narrative.**
+
+| Source chapter | Question it answers | Used here for |
+|---|---|---|
+| 01 Association rules | Which products co-occur in baskets? | Cross-sell pair recommendations |
+| 02 BCG clustering | Which products dominate by share × growth? | Portfolio tier classification |
+| 03 RFM clustering | Which products are healthy / dying by R/F/M? | Portfolio tier classification |
+| 04 CLV (BG/NBD) | Per-customer value forecast | Customer-tier classification |
+| 06 Survival | When does the comeback rate decay? | Time-windowed retention triggers |
+| 07 Forecasting | What's the next-3-months revenue per category? | Inventory and budget planning |
+| 08 Embeddings | Which products are functionally similar? | Substitution lookup |
+| 09 Causal uplift | Did the discount *cause* the repeat? | Targeting with positive uplift |
 
 ```{python}
 #| label: setup
@@ -167,28 +178,47 @@ for q in [0.10, 0.20, 0.30, 0.50]:
 
 The top 20% of returning customers cover roughly half of forecast revenue — a clean Pareto. *(See the [dashboard](dashboard.html) for the Lorenz curve.)*
 
-## Headline findings
-
-Pulling the threads together:
+## Headline findings — products & customers
 
 1. **Co-purchase patterns are strong and exploitable.** `dining_table → dining_chair` (~86% confidence, ~6× lift), `bed → mattress` (~70%), `kitchen_table → kitchen_chair` (~75%). These are not theoretical — they hold across hundreds of baskets each. Promoting the consequent at point-of-sale of the antecedent is essentially free revenue.
 
-2. **The catalog has clear structural tiers.** k=4 clusters appear in *both* BCG and RFM analyses, and the top tiers overlap heavily — products that are healthy on revenue/recency are usually the same ones with high market share. Different clustering methods, same conclusion: most of the value sits in a small set of identifiable products.
+2. **The catalog has clear structural tiers.** k=4 clusters appear in *both* BCG and RFM analyses, and the top tiers overlap heavily — products healthy on revenue/recency are usually the same ones with high market share. Different clustering methods, same conclusion: most of the value sits in a small set of identifiable products.
 
-3. **Engineered temporal trends are recovered cleanly.** Articles seeded as "growing" (`led_strip`, `garden_chair`, `ottoman`, etc.) end up in the BCG growth quadrant; "declining" (`filing_cabinet`, `dvd_player`) end up with old recency in RFM. This is a sanity check on the methods more than a finding, but it's reassuring.
+3. **Engineered temporal trends are recovered cleanly.** Articles seeded as "growing" (`led_strip`, `garden_chair`, `ottoman`) end up in the BCG growth quadrant; "declining" (`filing_cabinet`, `dvd_player`) end up with old recency in RFM. A sanity check on the methods more than a finding, but reassuring.
 
-4. **Customer value is heavily skewed.** The top 20% of returning customers account for around half of forecast 12-month revenue. A flat retention spend per customer is wrong by design; concentrating spend on the top decile would have far higher ROI.
+4. **Customer value is heavily skewed.** Top 20% of returning customers account for ~50% of forecast 12-month revenue. A flat retention spend per customer is wrong by design.
 
-5. **A measurable share of customers is "still alive but quiet".** P(alive) is in (0.4, 0.7) for a non-trivial slice — they bought once a while ago but recent enough that the model doesn't write them off. This is the win-back target zone: too far from the active core for organic re-engagement, not far enough gone to be lost causes.
+5. **A measurable share of customers is "still alive but quiet".** P(alive) ∈ (0.4, 0.7) for a non-trivial slice — they bought once a while ago but recent enough that the model doesn't write them off. The win-back target zone.
+
+## Headline findings — time and causality
+
+6. **The comeback rate has a sharp shape.** Survival analysis on time-to-second-purchase: by day 90, 81% of first-time buyers haven't returned; by day 180, 74%; by day 365, 68%. The curve flattens around 365 days — most one-time buyers stay one-time, and what doesn't come back in a year almost certainly won't.
+
+7. **First-basket characteristics don't predict comeback timing.** Cox PH on basket value, item count, discount usage, and dominant category produces no statistically significant hazard ratios on this dataset. The honest read: retention drivers are *not* in the first-purchase mix here. In real data with structural effects, this is where targeting gets its information.
+
+8. **Naive baselines beat fancy forecasting models on a 24-month series.** Per-category monthly revenue forecasts: seasonal-naive often beats SARIMA / ETS, naive (last value) sometimes beats both. With more history (3+ years) the picture flips, but on this scale: don't pay for sophistication you can't afford.
+
+9. **Embeddings recover the catalog category structure without seeing the labels.** PPMI × SVD on basket co-occurrence places `bed`-`mattress`-`nightstand` near each other, garden items together, dining items together — the t-SNE cluster pattern matches `product_group` despite the model never seeing it. Confirms that the co-purchase structure encodes real product semantics, not just frequency artifacts.
+
+10. **No detectable causal effect of first-purchase discounts on repeat-purchase rate.** Naive ATE bootstraps to a confidence interval straddling zero; T- and S-learner CATE distributions both center on zero. The injection sanity check confirms the technique would catch a real effect if there were one. *In our synthetic data, discounts are random — so this null result is the truth.* In real retail with targeted discounts (and resulting confounding), the same machinery requires propensity weighting before the conclusion holds.
 
 ## Recommendations
 
-- **Bundle and cross-sell on the strongest co-purchase pairs.** The `dining_table → dining_chair` pair is the headline; train salespeople / configure the website to never show the table without surfacing the chairs.
-- **Place top-tier products (Stars + RFM-rank-1) in highest-traffic positions.** Don't dilute prime placement to less-performant products.
-- **Treat the bottom-tier products (BCG-rank-4 + RFM-rank-4 overlap) as candidates for delisting.** Repeated low share, declining trend, infrequent recent sales — these are tying up shelf space.
-- **Triage retention spend by predicted CLV.** A 12-month CLV decile cut is a defensible budget allocation rule.
-- **Build a win-back trigger on P(alive) ∈ [0.4, 0.7]** with at least one prior purchase — these are the customers most reachable by a discount or product update email.
+**Product side:**
+
+- **Bundle and cross-sell on the strongest co-purchase pairs.** Train salespeople / configure the website to never show `dining_table` without surfacing `dining_chair`.
+- **Place top-tier products (BCG=1 ∩ RFM=1) in highest-traffic positions.** Don't dilute prime placement.
+- **Delist the BCG=4 ∩ RFM=4 overlap.** Repeated low share, declining trend, infrequent recent sales — these are tying up shelf space.
+- **Use embedding-based substitution at out-of-stock events** instead of generic alternatives. The substitution table from chapter 08 transfers directly to a "try these instead" UI panel.
+- **Plan inventory with seasonal-naive baselines + uncertainty bands** rather than chasing point forecasts from heavier models that don't actually outperform on this scale.
+
+**Customer side:**
+
+- **Triage retention spend by predicted 12-month CLV.** A decile cut is a defensible budget allocation rule.
+- **Time retention triggers to the survival curve, not gut feel.** Day 1–90: do nothing automated. Day 90–180: soft re-engage. Day 180–365: targeted offer. Day 365+: heavy reactivation or accept the loss.
+- **Combine P(alive) ∈ (0.4, 0.7) with prior purchase volume** for the win-back target list — high recall, manageable cost.
+- **Don't claim discounts caused repeat purchases without an RCT or a doubly-robust observational analysis.** For the dataset here the naive comparison is valid because treatment is random; in production it almost never is.
 
 ## What this chapter is *not*
 
-It is a synthesis, not a model. The numbers above all come from the four upstream chapters' methods; this is how a stakeholder report would consume them. For "what should I do tomorrow morning", this is the right level of summary. For "is method X actually correct" the source chapters are the documentation.
+It is a synthesis, not a model. The numbers above all come from the upstream chapters' methods; this is how a stakeholder report consumes them. For "what should I do tomorrow morning", this is the right level. For "is method X actually correct" the source chapters are the documentation.
