@@ -15,7 +15,9 @@ import seaborn as sns
 
 sns.set_theme(style="whitegrid")
 
-df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+from pathlib import Path
+_data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
+df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 print(f"Raw transactions: {len(df):,d} line items, {df['transaction_id'].nunique():,d} baskets, "
       f"{df['customer_id'].nunique():,d} customers, "
       f"{df['article_name'].nunique()} unique product names")

@@ -34,7 +34,9 @@ We split the 24-month window at its midpoint (2016-06-30) and aggregate revenue 
 
 ```{python}
 #| label: aggregate
-df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+from pathlib import Path
+_data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
+df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 SPLIT = pd.Timestamp("2016-06-30")
 df["period"] = np.where(df["date"] <= SPLIT, "p1", "p2")
 

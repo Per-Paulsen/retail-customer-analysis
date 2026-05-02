@@ -37,7 +37,9 @@ The censoring distinction is critical: a customer who first bought 700 days ago 
 
 ```{python}
 #| label: build-survival-table
-df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+from pathlib import Path
+_data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
+df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 
 tx = df.groupby(["customer_id", "transaction_id", "date"], as_index=False)["gross_price"].sum()
 OBS_END = tx["date"].max()

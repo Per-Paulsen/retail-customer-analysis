@@ -29,8 +29,8 @@ Reference date: 2017-06-30 (the last day of the data window). Recency is measure
 
 ```{r}
 #| label: rfm-features
-raw <- read_delim("data/synthetic/transactions.csv", delim = ";",
-                  show_col_types = FALSE)
+.data_path <- if (file.exists("data/raw/transactions.csv")) "data/raw/transactions.csv" else "data/synthetic/transactions.csv"
+raw <- read_delim(.data_path, delim = ";", show_col_types = FALSE)
 
 REF_DATE <- as.Date("2017-06-30")
 

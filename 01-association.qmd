@@ -23,7 +23,8 @@ For market basket analysis we only need two columns: the basket identifier (`tra
 library(dplyr)
 library(readr)
 
-raw <- read_delim("data/synthetic/transactions.csv", delim = ";", show_col_types = FALSE)
+.data_path <- if (file.exists("data/raw/transactions.csv")) "data/raw/transactions.csv" else "data/synthetic/transactions.csv"
+raw <- read_delim(.data_path, delim = ";", show_col_types = FALSE)
 cat("rows:", nrow(raw), "  baskets:", n_distinct(raw$transaction_id), "  items:", n_distinct(raw$article_name), "\n")
 ```
 
@@ -104,7 +105,9 @@ import pandas as pd
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 
-df = pd.read_csv("data/synthetic/transactions.csv", sep=";")
+from pathlib import Path
+_data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
+df = pd.read_csv(_data_path, sep=";")
 baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
 
 te = TransactionEncoder()

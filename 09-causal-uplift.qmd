@@ -38,7 +38,9 @@ A *crucial* property of this dataset: discounts are assigned **randomly** in the
 
 ```{python}
 #| label: build-customer-table
-df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+from pathlib import Path
+_data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
+df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 
 first_tx = df.sort_values("date").groupby("customer_id").agg(
     first_tx_id=("transaction_id", "first"),
