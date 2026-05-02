@@ -1,12 +1,6 @@
 # Retail Customer & Basket Analysis
 
-End-to-end product and customer analytics on a synthetic two-year retail transaction dataset, demonstrating five techniques in both R and Python — from classic market basket analysis to modern probabilistic CLV modeling.
-
-1. **Association Rules / Market Basket Analysis** with `arules` (R) and `mlxtend` (Python)
-2. **BCG-style Portfolio Clustering** — products positioned by market share × growth (Python / scikit-learn)
-3. **RFM Clustering** — Recency, Frequency, Monetary value, with an interactive 3D view (R / `kmeans` + plotly)
-4. **Customer Lifetime Value** — probabilistic CLV with BG/NBD + Gamma-Gamma (Python / `lifetimes`)
-5. **Insights synthesis** — cross-cuts between the four upstream chapters with concrete recommendations
+End-to-end product and customer analytics on a synthetic two-year retail transaction dataset, mixing classic and modern techniques across R and Python — from market basket analysis and BCG/RFM segmentation through probabilistic CLV to survival, forecasting, embeddings, and causal uplift.
 
 The full analysis is published as a [Quarto](https://quarto.org) website that mixes both languages in a single project. There's also a one-page **dashboard view** with KPI cards and tabbed visualizations, and a standalone Python notebook that replays the RFM analysis in Colab.
 
@@ -33,7 +27,7 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 | [Dashboard](dashboard.qmd) | Python | Quarto Dashboard, plotly | KPI tiles + tabbed visual explorer |
 | [Notebook — RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
 
-For methods we considered and deferred — survival analysis, demand forecasting, prod2vec embeddings, causal uplift — see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+For the project's methodological roadmap and notes on lower-priority deferred items, see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Reproducing locally
 
@@ -69,7 +63,7 @@ The methodology is based on a 2017 internship project for a German retail compan
 
 - **No real data.** The dataset in `data/synthetic/` is fully synthesized to preserve confidentiality while reproducing the structural and statistical properties needed to make the analyses meaningful — co-purchase patterns, temporal trends, popularity skew, customer-level lifetime/frequency structure. See [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md) for the schema and the synthesis design.
 - **Multi-language.** The original was R-only with monolithic scripts. The modernized version splits the work into focused chapters, mixes R and Python where each language fits best, and uses Quarto so code, output, and explanation live in one document.
-- **Modern methods added.** The original had three classic chapters (rules, BCG, RFM). The modernized version adds probabilistic CLV with BG/NBD + Gamma-Gamma, a synthesis chapter that cross-references the upstream analyses, and a dashboard summary. Future-work methods are documented in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+- **Modern methods added.** The original had three classic chapters (rules, BCG, RFM). The modernized version adds probabilistic CLV with BG/NBD + Gamma-Gamma, survival analysis, demand forecasting, product embeddings, and causal uplift — plus a synthesis chapter that cross-references the upstream analyses and a dashboard summary. The methodological roadmap and lower-priority deferred items are tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Methods at a glance
 

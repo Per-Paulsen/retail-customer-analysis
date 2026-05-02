@@ -2,7 +2,7 @@
 title: "Retail Customer & Basket Analysis"
 ---
 
-End-to-end customer and product analytics on a synthetic retail transaction dataset, demonstrating five techniques in both R and Python — from classic market basket analysis to modern probabilistic CLV modeling.
+End-to-end customer and product analytics on a synthetic retail transaction dataset, mixing classic and modern techniques across R and Python — from market basket analysis and BCG/RFM segmentation through probabilistic CLV to survival, forecasting, embeddings, and causal uplift.
 
 ## Chapters
 
@@ -34,7 +34,7 @@ The dataset is synthesized to mirror a two-year transaction log from a furniture
 
 The synthesis encodes co-purchase patterns (e.g. *dining_table → dining_chair* at 85%), temporal trends (some articles grow over the window, others decline), and customer-level structure (lifetime + transaction rate per customer, BG/NBD-style). Full schema and design rationale: [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md).
 
-For methods we considered and deferred (survival analysis, demand forecasting, prod2vec, causal uplift), see [`docs/ROADMAP.md`](docs/ROADMAP.md).
+For the methodological roadmap and notes on lower-priority deferred items, see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Reproducing locally
 

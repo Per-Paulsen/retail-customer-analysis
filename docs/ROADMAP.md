@@ -1,6 +1,6 @@
-# Roadmap — Methods Deferred for Later
+# Roadmap — Methods Considered
 
-The five chapters in this repo (Association Rules, BCG, RFM, CLV, Insights) cover the *core* of modern retail analytics. This document records the methods we considered and consciously deferred — each is a candidate for a future chapter when there's time / appetite.
+This document tracks the methodological roadmap of the project. The first four entries (survival analysis, demand forecasting, product embeddings, causal uplift) were on the original deferred list and have since been implemented as chapters 06–09. The remaining items are lower-priority candidates kept here for completeness.
 
 The list is ranked by *expected portfolio impact* given the data we have.
 
