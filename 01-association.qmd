@@ -75,15 +75,9 @@ simple_sorted <- sort(simple, by = "confidence", decreasing = TRUE)
 inspect(head(simple_sorted, 10))
 ```
 
-These recover the co-purchase patterns we encoded in the synthesis:
+These are *all* simple rules sorted by confidence — including the definitional ones (`bed ⇒ mattress`, `headboard ⇒ bed`) that aren't really insights. The Python section below applies a **triage filter** (symmetry + accessory tag) that separates actionable rules from definitional plumbing. The raw output here is intentionally unfiltered for the R/Python comparison; the curated headline view is in the next section.
 
-- `dining_table ⇒ dining_chair` at ~86% confidence
-- `kitchen_table ⇒ kitchen_chair` at ~75%
-- `bed ⇒ mattress` at ~69%
-- `desk ⇒ office_chair` at ~72%
-- `garden_table ⇒ garden_chair` at ~70%
-
-Lift values in the 4–10× range mean these pairs co-occur several times more often than chance.
+Confidence range across the 8 simple rules: ~53–81%. Lift range: 3–14×. The strongest pairs co-occur 4–10× more often than chance — but as we'll see, "co-occurs more than chance" isn't the same as "is a useful cross-sell prompt".
 
 ### What about the complex rules?
 
