@@ -43,5 +43,10 @@ data/raw/*
 !data/raw/.gitkeep
 !data/raw/README.md
 
+# Local-only operating notes / runbooks
+LOCAL_DEV.md
+LOCAL_*.md
+*.local.md
+
 /.quarto/
 **/*.quarto_ipynb
