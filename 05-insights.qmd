@@ -295,6 +295,23 @@ print(f"  measured causal lift on repurchase: 0% (95% CI straddles zero)")
 print(f"  → at face value: €{total_discount_eur:,.0f} of revenue forgone with no detectable retention payoff in this synthetic dataset")
 ```
 
+## Granularity choices per analysis
+
+The catalog has a 5-level hierarchy (Department → Category → Family → Model → SKU). Different methods use different levels. The choice isn't free — pick wrong and you either overfit (too fine) or lose signal (too coarse). Here's what each chapter uses and why:
+
+| Chapter | Level | Why this level |
+|---|---|---|
+| 01 Association rules | Family (`article_name`) | Customers care about *what* not *which model*. `bed → mattress` is a more useful rule than `harmony bed → premium mattress`. |
+| 02 BCG clustering | Family | 40 names is the sweet spot for a 4-cluster k-means. Going to SKU (66) just adds variance, going to Category (10) leaves too few points. |
+| 03 RFM clustering | Family | Same reasoning as BCG. |
+| 04 CLV (BG/NBD) | Customer | The level above all of these — but the *unit of value* is the basket euro, which doesn't depend on product granularity. |
+| 06 Survival | Customer + Family covariates | Customer-level outcome; basket-feature covariates use Family. |
+| 07 Forecasting | Both Department and Category | Department for executive view (6 series, more signal), Category for operational planning (10 series, finer detail). |
+| 08 Embeddings | Family | Could go to SKU but at 66 SKUs the embedding space gets sparse. |
+| 09 Causal uplift | Customer + Family covariates | Same logic as Survival. |
+
+The common pattern: **start at Family, only step up or down when there's a specific reason**. Step up to Department when individual categories are too sparse (Forecasting on Outdoor / Storage). Step down to SKU only when SKU-level decisions are at stake (inventory, replenishment).
+
 ## Triage — what's actually insight, what's plumbing?
 
 Before recommendations, classify every finding the chapters surfaced. This separates *insights you should act on* from *sanity checks* (the analysis worked, but you knew this) and *data-quality artifacts* (something to fix in the catalog, not in marketing).

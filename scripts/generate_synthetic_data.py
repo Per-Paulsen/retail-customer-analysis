@@ -47,6 +47,19 @@ BUNDLE_GROUPS: dict[str, str] = {
     **{n: "garden_system"  for n in ("garden_chair", "garden_table", "parasol")},
 }
 
+# Department: highest level of the product hierarchy. Aggregates the 10
+# 4-character product_group codes into 6 store-floor sections. Lets analyses
+# pick the right level of granularity (forecasting at Department, BCG at
+# Family, embeddings at SKU). See docs/DATA_SPEC.md for the full hierarchy.
+DEPARTMENTS: dict[str, str] = {
+    "LIVI": "Living",   "DECO": "Living",   "LIGH": "Living",   "ELEC": "Living",
+    "BEDR": "Bedroom",
+    "DINI": "Dining",   "KITC": "Dining",
+    "OFFI": "Office",
+    "STOR": "Storage",
+    "OUTD": "Outdoor",
+}
+
 OUTPUT_PATH = (
     Path(__file__).resolve().parent.parent
     / "data"
@@ -350,6 +363,7 @@ def generate_dataset() -> pd.DataFrame:
                         "net_price": round(net, 2),
                         "net_cost": round(cost, 2),
                         "date": tx_date.isoformat(),
+                        "department": DEPARTMENTS.get(item.product_group, ""),
                         "product_group": item.product_group,
                         "bundle_group": BUNDLE_GROUPS.get(item.article_name, ""),
                         "supplier_id": item.supplier_id,

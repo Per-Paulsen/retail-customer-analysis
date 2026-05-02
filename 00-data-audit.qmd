@@ -133,12 +133,49 @@ A second mechanical filter: rules where `A → B` and `B → A` both have high c
 
 We compute this systematically in the association chapter (chapter 01). The audit step here just establishes the framework: any rule with **both directions ≥ 60% confidence** earns the "symmetric" tag and is filtered from the headline list.
 
-## 4. Audit summary — what the downstream chapters now know
+## 4. Product hierarchy — picking the right granularity per analysis
+
+The catalog isn't flat. It's a 5-level hierarchy:
+
+```
+Department  →  Category (product_group)  →  Family (article_name)  →  Model  →  SKU (article_id)
+   6                10                            40                  ~20      66
+```
+
+Different analyses want different levels:
+
+```{python}
+#| label: hierarchy-summary
+hier = (
+    df.groupby("department")
+      .agg(
+          categories=("product_group", lambda s: s.nunique()),
+          families=("article_name", lambda s: s.nunique()),
+          skus=("article_id", lambda s: s.nunique()),
+          revenue=("gross_price", "sum"),
+          line_items=("line_item", "count"),
+      )
+      .sort_values("revenue", ascending=False)
+)
+hier["revenue_share"] = hier["revenue"] / hier["revenue"].sum()
+hier.round({"revenue": 0, "revenue_share": 3})
+```
+
+A few observations the analyses below will lean on:
+
+- **Living dominates** — over a third of revenue. Any catalog-wide finding will reflect Living patterns disproportionately.
+- **Outdoor and Storage are small** — fewer than 10 SKUs each. Aggregating to Department lets us forecast their revenue at all (per-Category Outdoor would be too sparse).
+- **Bedroom is a single category** but high-revenue, mostly because beds + mattresses are big-ticket items. Family-level analysis here matters more than within-Department drilldown.
+
+For each downstream analysis, the granularity choice goes into the chapter intro: forecasting at Department level (more data per series), clustering at Family level (interpretable items), embeddings at SKU level (finest functional differences).
+
+## 5. Audit summary — what the downstream chapters now know
 
 After this chapter, every analysis downstream has access to:
 
 | Field | Meaning |
 |---|---|
+| `department` | One of 6 store-floor sections (above category) |
 | `bundle_group` | Functional product-system membership (or empty for standalone) |
 | `flag_low_volume` (computed) | < 0.5% of revenue |
 | `flag_long_silent` (computed) | > 90 days since last sale |

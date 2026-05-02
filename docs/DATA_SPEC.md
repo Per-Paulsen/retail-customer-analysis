@@ -19,7 +19,8 @@ The synthetic dataset and the cleaned version of the real dataset share this sch
 | `net_price` | float | Sales price per unit, excluding VAT |
 | `net_cost` | float | Purchase cost per unit (for the retailer) |
 | `date` | date (YYYY-MM-DD) | Transaction date |
-| `product_group` | string | 4-character category code (e.g. `DINI`, `LIVI`) |
+| `department` | string | Top-level store section (`Living`, `Bedroom`, `Dining`, `Office`, `Storage`, `Outdoor`) |
+| `product_group` | string | 4-character category code (e.g. `DINI`, `LIVI`) — the analytical default for grouping |
 | `bundle_group` | string | Functional product-system membership (e.g. `bed_system`, `dining_system`) — empty for standalone items. Used by the [data audit](../00-data-audit.qmd) chapter to flag definitional co-purchases. |
 | `supplier_id` | string | Supplier identifier |
 | `discount_type` | int | `0` = none, `1` = line-level, `2` = order-level |
@@ -28,6 +29,43 @@ The synthetic dataset and the cleaned version of the real dataset share this sch
 | `discount_reason` | string | Single-character code, or empty |
 
 **Removed columns** (relative to the original): customer last name, salesperson, free-form order text, raw split of line/order discounts. These were either personally identifiable or redundant after consolidation.
+
+## Product hierarchy
+
+The catalog has a 5-level hierarchy that downstream analyses use at different granularities — pick the level that matches the analytical question, not always the finest one:
+
+```
+Department      6 sections        Living, Bedroom, Dining, Office, Storage, Outdoor
+    │
+    └── Category (product_group)   10 codes        BEDR, BIN, DECO, DINI, ELEC, ...
+            │
+            └── Family (article_name)   40 names    bed, mattress, sofa, ...
+                    │
+                    └── Model           ~20 series  harmony, milano, kompakt, oak, walnut, ...
+                            │
+                            └── SKU (article_id)   66 stock keeping units   B3001, B3002, ...
+```
+
+| Level | Granularity | Used by |
+|---|---|---|
+| **Department** | Store-floor section | Demand forecasting (highest signal-to-noise on this dataset), executive reporting |
+| **Category** (`product_group`) | Functional category | Drill-down forecasting, RFM-style segmentation |
+| **Family** (`article_name`) | The product, ignoring variants | **Default for most analyses**: association rules, BCG/RFM clustering, embeddings |
+| **Model** | Variant within a family | Pricing analysis, supplier reporting |
+| **SKU** (`article_id`) | Unique stock unit | Inventory, point-of-sale, embedding lookups in production |
+
+The Family level is the analytical default because (a) it groups variants of the same product together (`bed-harmony`, `bed-milano`, `bed-kompakt` → `bed`), which is what cross-sell logic should care about, and (b) at 40 distinct names the count is dense enough for clustering and rule mining without being so fine-grained that signal disappears into noise.
+
+Department mapping:
+
+| Department | Categories | Rationale |
+|---|---|---|
+| **Living** | LIVI, DECO, LIGH, ELEC | Living-room ecosystem: furniture, decor, lighting, entertainment electronics |
+| **Bedroom** | BEDR | Bedroom furniture and bedding |
+| **Dining** | DINI, KITC | Eating spaces — formal dining + kitchen |
+| **Office** | OFFI | Workspace furniture |
+| **Storage** | STOR | Standalone storage pieces |
+| **Outdoor** | OUTD | Garden and patio |
 
 ## Original German schema (for reference)
 

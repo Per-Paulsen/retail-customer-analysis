@@ -178,6 +178,59 @@ A few patterns emerge:
 - **SARIMA** sometimes overfits the limited training history and produces worse-than-naive forecasts.
 - **MAPE** is misleading for the smallest categories — a 100% MAPE on STOR (low-volume storage) is a few thousand euros of error, not a forecasting catastrophe.
 
+## Granularity matters — Department vs. Category
+
+The above runs at *Category* level (10 series). The catalog also has a *Department* level above category (6 series), which aggregates across related categories. With the same 24 months of data, Department-level series have **roughly the noise floor halved** — Living combines LIVI + DECO + LIGH + ELEC, so randomness in any one category averages out.
+
+```{python}
+#| label: department-backtest
+df_dept = (
+    df.groupby(["department", "month"])["gross_price"].sum()
+      .unstack(fill_value=0).stack().rename("revenue").reset_index()
+      .sort_values(["department", "month"])
+)
+
+dept_rows = []
+for dept in sorted(df_dept["department"].unique()):
+    s = df_dept[df_dept["department"] == dept].set_index("month")["revenue"].asfreq("MS")
+    train, test = s.iloc[:-HORIZON], s.iloc[-HORIZON:]
+    preds = fit_predict(train.values, HORIZON)
+    for model, p in preds.items():
+        mae, mape = metrics(test.values, p.values)
+        dept_rows.append({"level": "Department", "series": dept, "model": model,
+                          "MAE_EUR": mae, "MAPE_%": mape})
+
+# Re-tag the original category backtest for comparison
+cat_rows = backtest.copy()
+cat_rows["level"] = "Category"
+cat_rows = cat_rows.rename(columns={"category": "series"})[["level", "series", "model", "MAE_EUR", "MAPE_%"]]
+
+combined = pd.concat([pd.DataFrame(dept_rows), cat_rows], ignore_index=True)
+summary = combined.groupby(["level", "model"])[["MAE_EUR", "MAPE_%"]].mean().round(1)
+summary
+```
+
+```{python}
+#| label: fig-level-compare
+#| fig-cap: "MAPE distribution per model at Category vs. Department level. Department-level forecasts are tighter — the same models work better when the series has more signal-to-noise."
+fig, ax = plt.subplots(figsize=(9, 4.5))
+sns.boxplot(data=combined, x="model", y="MAPE_%", hue="level", ax=ax,
+            order=order, palette={"Category": "#3498db", "Department": "#27ae60"})
+ax.set_ylabel("MAPE (%)")
+ax.set_xlabel("")
+ax.set_ylim(0, max(60, combined["MAPE_%"].quantile(0.95)))
+plt.tight_layout()
+plt.show()
+```
+
+This is the textbook trade-off in hierarchical forecasting: **higher granularity = more interpretable, lower signal**; **higher aggregation = less interpretable, more reliable**. In production you'd usually:
+
+1. Forecast at **Department level** for budget / capacity / supplier negotiations (the "is the business growing?" question).
+2. Forecast at **Category level** for inventory and promotional planning (the "how many garden tables in March?" question).
+3. **Reconcile** so the per-category forecasts sum to the department forecast — there are libraries like Nixtla's `hierarchicalforecast` for exactly this.
+
+We don't reconcile here (24 months is too thin to demonstrate it well), but the takeaway sticks: the right level of granularity is *the one the decision needs*, not always the finest available.
+
 ## Forecast vs. actual — three representative categories
 
 ```{python}
