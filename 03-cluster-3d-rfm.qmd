@@ -173,6 +173,39 @@ rpart.plot(tree, type = 2, extra = 100, fallen.leaves = TRUE,
 
 Codified as a few `if`-thresholds, this is a deployable scoring rule that needs no clustering library at runtime.
 
+## Coarse view — RFM at Department level
+
+The Family-level scatter is detailed enough for catalog operations. For executive reporting the more digestible aggregation is **Department** — six store-floor sections instead of dozens of products. With six points clustering becomes pointless; we just compute R/F/M per department and read the result directly.
+
+```{r}
+#| label: rfm-dept
+raw_dept <- raw |>
+  filter(!is.na(department), department != "") |>
+  group_by(department) |>
+  summarise(
+    frequency = n(),
+    value     = sum(gross_price),
+    recency   = as.numeric(REF_DATE - max(date)) / 30.4375,
+    .groups   = "drop"
+  ) |>
+  arrange(desc(value))
+
+raw_dept
+```
+
+```{r}
+#| label: fig-rfm-dept
+#| fig-cap: "Department-level RFM. Bubble size encodes frequency; positions encode recency × monetary value. Useful for budget conversations."
+ggplot(raw_dept, aes(recency, value, size = frequency, label = department)) +
+  geom_point(color = "#3498db", alpha = 0.7) +
+  geom_text(size = 4, fontface = "bold", vjust = -1.4) +
+  scale_size(range = c(8, 20), guide = "none") +
+  labs(x = "Recency (months since last sale)", y = "Total revenue (EUR)") +
+  theme_minimal()
+```
+
+Department-level readings are coarser by design — you lose the per-product detail but gain a cleaner narrative for stakeholders who don't want to parse a 40-point 3D scatter.
+
 ## Takeaway
 
 The k=4 RFM segmentation cleanly separates the catalog into a healthy core, a long middle, and a tail of dying products. The framework was originally designed for customers but transfers directly to articles — and the same techniques work for *any* entity you can summarize as (recency, frequency, monetary).

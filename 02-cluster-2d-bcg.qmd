@@ -197,6 +197,46 @@ plt.show()
 
 This tree could be deployed as a simple if/else in any system that needs to place a new product into the BCG framework — no full k-means re-fit required.
 
+## Coarse view — BCG at Department level
+
+The Family-level plot above is the operational view: which *products* to amplify or rationalize. For executive reporting the more useful aggregation is **Department** — six store-floor sections instead of dozens of products. Six points are too few for k-means (the elbow is meaningless), so we just compute share and growth per department and read the quadrants directly.
+
+```{python}
+#| label: fig-bcg-dept
+#| fig-cap: "Same share × growth space, aggregated to Department. Quadrant lines at the cross-department mean. Useful for budget conversations: which sections of the floor are growing, which are mature."
+df_dept = df[df["department"].astype(str) != ""].copy()
+period_rev_dept = (
+    df_dept.groupby(["department", "period"])["gross_price"].sum()
+           .unstack(fill_value=0.0)
+           .rename(columns={"p1": "rev_p1", "p2": "rev_p2"})
+)
+period_rev_dept["revenue"] = period_rev_dept["rev_p1"] + period_rev_dept["rev_p2"]
+period_rev_dept["share"]   = period_rev_dept["revenue"] / period_rev_dept["revenue"].sum()
+period_rev_dept["growth"]  = np.where(
+    period_rev_dept["rev_p1"] > 0,
+    (period_rev_dept["rev_p2"] - period_rev_dept["rev_p1"]) / period_rev_dept["rev_p1"],
+    np.where(period_rev_dept["rev_p2"] > 0, 1.0, -1.0),
+)
+period_rev_dept = period_rev_dept[period_rev_dept["share"] > 0].copy()
+
+fig, ax = plt.subplots(figsize=(8, 5.5))
+ax.scatter(period_rev_dept["share"], period_rev_dept["growth"],
+           s=180, color="#3498db", edgecolor="white", linewidth=2)
+for dept, row in period_rev_dept.iterrows():
+    ax.annotate(dept, (row["share"], row["growth"]),
+                xytext=(8, 4), textcoords="offset points", fontsize=10, fontweight="bold")
+ax.axhline(period_rev_dept["growth"].mean(), color="grey", lw=0.8, ls="--")
+ax.axvline(period_rev_dept["share"].mean(),  color="grey", lw=0.8, ls="--")
+ax.set_xlabel("Market share (linear)")
+ax.set_ylabel("Growth rate (period-over-period)")
+plt.tight_layout()
+plt.show()
+
+period_rev_dept[["revenue", "share", "growth"]].round({"revenue": 0, "share": 3, "growth": 3})
+```
+
+Department-level readings are coarser by design — you lose the per-product detail but gain a cleaner narrative for stakeholders who don't want to parse a 40-point scatter plot.
+
 ## Takeaway
 
 The k=4 clustering recovers the BCG framework directly from data, and the assignments line up with the temporal trends we engineered: growing products land in the top-right, declining ones in the bottom-left, mature high-volume products as cash cows in the middle-right.
