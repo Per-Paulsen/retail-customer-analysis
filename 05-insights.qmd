@@ -36,8 +36,8 @@ RANDOM_STATE = 42
 from pathlib import Path
 _data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
 df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
-SPLIT = pd.Timestamp("2016-06-30")
-REF_DATE = pd.Timestamp("2017-06-30")
+REF_DATE = df["date"].max()
+SPLIT = df["date"].min() + (REF_DATE - df["date"].min()) / 2
 ```
 
 ## Building one product table from BCG + RFM

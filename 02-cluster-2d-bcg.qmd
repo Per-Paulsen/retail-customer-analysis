@@ -30,14 +30,15 @@ RANK_PALETTE = ["#27ae60", "#3498db", "#f39c12", "#c0392b"]  # rank 1 → 4, use
 
 ## Compute share and growth
 
-We split the 24-month window at its midpoint (2016-06-30) and aggregate revenue per product in each half:
+We split the data window at its midpoint and aggregate revenue per product in each half:
 
 ```{python}
 #| label: aggregate
 from pathlib import Path
 _data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
 df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
-SPLIT = pd.Timestamp("2016-06-30")
+SPLIT = df["date"].min() + (df["date"].max() - df["date"].min()) / 2
+print(f"Window: {df['date'].min().date()} → {df['date'].max().date()}, split at {SPLIT.date()}")
 df["period"] = np.where(df["date"] <= SPLIT, "p1", "p2")
 
 period_rev = (

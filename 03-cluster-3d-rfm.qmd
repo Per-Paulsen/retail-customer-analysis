@@ -25,14 +25,14 @@ set.seed(42)
 
 ## Compute R, F, M per article
 
-Reference date: 2017-06-30 (the last day of the data window). Recency is measured in months since the article's last sale.
+Reference date is the last day of the data window. Recency is measured in months since the article's last sale.
 
 ```{r}
 #| label: rfm-features
 .data_path <- if (file.exists("data/raw/transactions.csv")) "data/raw/transactions.csv" else "data/synthetic/transactions.csv"
 raw <- read_delim(.data_path, delim = ";", show_col_types = FALSE)
 
-REF_DATE <- as.Date("2017-06-30")
+REF_DATE <- max(raw$date)
 
 rfm <- raw |>
   group_by(article_name) |>
@@ -43,8 +43,8 @@ rfm <- raw |>
     .groups   = "drop"
   )
 
-cat(sprintf("%d articles, recency range [%.1f, %.1f] months, value range [%.0f, %.0f] EUR\n",
-            nrow(rfm), min(rfm$recency), max(rfm$recency),
+cat(sprintf("Reference date: %s | %d articles, recency range [%.1f, %.1f] months, value range [%.0f, %.0f] EUR\n",
+            format(REF_DATE), nrow(rfm), min(rfm$recency), max(rfm$recency),
             min(rfm$value), max(rfm$value)))
 ```
 
@@ -62,7 +62,7 @@ p3 <- ggplot(rfm, aes(value))     + geom_histogram(bins = 15, fill = "seagreen")
 p1 + p2 + p3
 ```
 
-Most articles have very recent last sales (the data window ends 2017-06-30, and most products are still selling). A small tail of articles last sold months ago — these are the declining products we engineered into the synthesis (`filing_cabinet`, `dvd_player`).
+Most articles have very recent last sales — the data window ends at the reference date and most products are still selling. A small tail of articles last sold months ago — on synthetic data these are the declining products engineered into the synthesis (`filing_cabinet`, `dvd_player`); on real data they are end-of-life SKUs.
 
 ## How many clusters?
 
