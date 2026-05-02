@@ -69,29 +69,36 @@ Department mapping:
 
 ## Original German schema (for reference)
 
-The historical raw file used these columns. The preprocessing step normalizes and renames them:
+The historical raw file uses these columns. `scripts/preprocess_real_data.py` normalizes them into the target schema above so all chapters can load real and synthetic data through the same code path:
 
 | Original | Mapped to | Notes |
 |---|---|---|
 | `Kaufvertragsnummer` | `transaction_id` | |
 | `Kaufvertragsposition` | `line_item` | |
-| `Nachname` | *(dropped)* | PII |
+| `Nachname` | `customer_id` | PII — hashed (md5 → deterministic 5-digit ID) |
 | `Menge` | `quantity` | |
 | `Artikelnummer` | `article_id` | |
-| `Artikel_Bezeichnung` | `article_name` | Normalized: lowercase, LED prefix stripped, "tv-" → "fernseh", "Xer" → "sofa", first token only |
+| `Artikel_Bezeichnung` | `article_name` | Kept raw on the real path (no normalization yet — see family-mapping followup) |
 | `Model_Bezeichnung` | `model` | First token only |
 | `Brutto_VKP` | `gross_price` | |
 | `Netto_VKP` | `net_price` | |
 | `Netto_EKP` | `net_cost` | |
-| `Verkaufer` | *(dropped)* | Salesperson — not needed for the analyses |
-| `Bestelltext` | *(dropped)* | Duplicate of `Nachname` per source comment |
+| `Verkaufer` | *(dropped)* | Salesperson — PII |
+| `Bestelltext` | *(dropped)* | PII |
 | `Datum` | `date` | Format `DD.MM.YYYY` → ISO |
-| `Warengruppe` | `product_group` | First 4 characters |
+| `Warengruppe` | `department`, `product_group` | First 2 digits → `department` via `DEPARTMENT_MAP` (with name-pattern fallback for missing codes) and → `product_group` via `PRODUCT_GROUP_MAP`, which collapses the ~30 numeric source codes onto the 10-code synthetic taxonomy (`DINI`, `LIVI`, …) |
 | `Lieferantennummer` | `supplier_id` | |
 | `Position_Nachlass` / `Gesamt_Nachlass` | consolidated → `discount_amount` | |
 | `Position_Nachlass_p` / `Gesamt_Nachlass_p` | consolidated → `discount_percentage` | |
 | `Position_Nachlass_Grund` / `Gesamt_Nachlass_Grund` | consolidated → `discount_reason` | First character only |
 | (derived) | `discount_type` | `0` if both zero, `1` if line-level only, `2` otherwise |
+| (derived) | `bundle_group` | From `article_name` via `BUNDLE_PATTERNS` regex |
+
+**Filtered out during preprocessing** (real-data path only):
+- Rows with `Warengruppe` codes `50` (Gutschrift) or `70` (Transportkosten) — accounting line items, not product sales (mapped to `department="Other"` then dropped).
+- Rows with missing/empty `date` or `article_name`.
+
+**Known gap:** rows where `Warengruppe` is missing *and* the `article_name` doesn't match any `NAME_DEPARTMENT_PATTERNS` entry land with `department=""` and `product_group=""`. These remain in the dataset (typically a few percent of the real data) and surface as a residual category in department-level aggregations.
 
 ## Synthetic dataset design
 

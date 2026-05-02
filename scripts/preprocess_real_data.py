@@ -35,7 +35,7 @@ OUTPUT_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "raw" / "transactions.csv"
 )
 
-# 4-digit Warengruppe code (first 2 digits) → department
+# 4-digit Warengruppe code (first 2 digits) → department.
 # Based on the Warengruppen taxonomy in the source file:
 #   00 Anbauwände | 01 Polstermöbel | 02 Couchtische/Kleinmöbel
 #   03 Betten | 04 Kleiderschränke | 05 Kommoden/Nachttische | 06 Matratzen
@@ -72,6 +72,35 @@ DEPARTMENT_MAP: dict[str, str] = {
     "50": "Other",       # Gutschrift (credit notes — accounting, not a real purchase)
     "70": "Other",       # Transportkosten (shipping fees)
 }
+
+# Real Warengruppe code (first 2 digits) → synthetic-schema product_group.
+# The synthetic dataset uses 10 alphabetic 4-character codes (DINI, LIVI, ...);
+# the real source uses ~30 numeric 4-digit codes at finer granularity. This
+# map collapses real onto the synth taxonomy so all chapters can group by a
+# single product_group column regardless of data source. Codes mapped to ""
+# are accounting line items (Gutschrift, Transportkosten) and get filtered.
+PRODUCT_GROUP_MAP: dict[str, str] = {
+    "00": "LIVI", "01": "LIVI", "02": "LIVI",
+    "03": "BEDR", "04": "BEDR", "05": "BEDR", "06": "BEDR",
+    "07": "DINI", "08": "KITC",
+    "09": "STOR",
+    "10": "LIGH",
+    "11": "DECO", "12": "DECO", "13": "DECO", "14": "DECO", "15": "DECO", "16": "DECO",
+    "17": "OUTD", "18": "OUTD", "19": "OUTD",
+    "20": "LIVI", "22": "DECO", "25": "DECO",
+    "40": "BEDR", "41": "BEDR", "42": "LIGH",
+    "50": "", "70": "",
+}
+
+# Schema order matching the synthetic dataset, used to align column layout
+# between real and synth so all loaders see identical structure.
+SCHEMA_ORDER: list[str] = [
+    "customer_id", "transaction_id", "line_item",
+    "article_id", "article_name", "model",
+    "quantity", "gross_price", "net_price", "net_cost",
+    "date", "department", "product_group", "bundle_group", "supplier_id",
+    "discount_type", "discount_amount", "discount_percentage", "discount_reason",
+]
 
 # Article-name patterns → bundle_group. Matched against the lowercased,
 # accent-stripped Artikelbezeichnung.
@@ -254,13 +283,16 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
     # Date
     out["date"] = pd.to_datetime(raw["_datum"], format="%d.%m.%Y", errors="coerce")
 
-    # Hierarchy from Warengruppe
+    # Hierarchy from Warengruppe. Department is derived from the raw 4-digit
+    # code (with name-pattern fallback for missing codes); product_group is
+    # collapsed onto the 10-code synthetic taxonomy via PRODUCT_GROUP_MAP so
+    # downstream chapters work with a uniform schema across data sources.
     parsed = raw["_wg"].apply(_parse_warengruppe)
-    out["product_group"]      = parsed.apply(lambda t: t[0])  # 4-digit code
-    out["product_group_text"] = parsed.apply(lambda t: t[1])
-    out["material"]           = parsed.apply(lambda t: t[2])
-    out["department"]         = out.apply(
-        lambda r: _derive_department(r["product_group"], r["article_name"]), axis=1
+    wg_code = parsed.apply(lambda t: t[0])
+    out["product_group"] = wg_code.str[:2].map(PRODUCT_GROUP_MAP).fillna("")
+    out["department"] = pd.Series(
+        [_derive_department(c, n) for c, n in zip(wg_code, out["article_name"])],
+        index=out.index,
     )
 
     # Bundle membership (derived from article_name)
@@ -285,22 +317,27 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
         np.where(out["discount_type"] == 2, raw["_grund_ges"].fillna("").astype(str).str[:1], "")
     )
 
-    # Drop rows with no usable date or article (strict: NaN, empty, "nan" string)
+    # Drop rows with no usable date or article (strict: NaN, empty, "nan" string),
+    # plus accounting-only line items (Gutschrift, Transportkosten — department
+    # "Other") that don't represent product sales and aren't in the synth schema.
     before = len(out)
     out = out[
         out["date"].notna()
         & out["article_name"].notna()
         & (out["article_name"].astype(str).str.strip() != "")
         & (out["article_name"].astype(str).str.lower() != "nan")
+        & (out["department"] != "Other")
     ].copy()
     if len(out) < before:
-        print(f"  dropped {before - len(out)} rows with missing date/article")
+        print(f"  dropped {before - len(out)} rows (missing date/article or accounting-only)")
 
     out = out.sort_values(["transaction_id", "line_item"]).reset_index(drop=True)
 
     # Round monetary fields
     for col in ("gross_price", "net_price", "net_cost", "discount_amount", "discount_percentage"):
         out[col] = out[col].round(4 if "percentage" in col else 2)
+
+    out = out[SCHEMA_ORDER]
 
     output.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(output, sep=";", index=False)
