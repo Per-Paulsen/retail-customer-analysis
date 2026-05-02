@@ -1,8 +1,8 @@
 ---
-title: "Demand Forecasting — Monthly Revenue per Category"
+title: "Demand Forecasting — Monthly Revenue per Department & Category"
 ---
 
-This chapter forecasts the next several months of revenue **at the product-group level**. Forecasting individual SKUs would be hopeless — 66 articles × 24 monthly observations is far too sparse. But aggregating to the 10 product groups gives 10 series of 24 monthly points each, which is enough for *meaningful* (if not flashy) forecasts.
+This chapter forecasts the next several months of revenue at two aggregation levels. Forecasting individual SKUs would be hopeless — too few monthly observations, too many series. We aggregate to **Category** (10 product groups, the inventory-planning level) and to **Department** (6 store-floor sections, the budget/capacity level), and demonstrate the textbook trade-off: lower aggregation gives richer drill-down, higher aggregation gives more reliable forecasts.
 
 The honest framing of this chapter: with two years of data we sit right at the edge of what classical seasonal models can support. We get useful baselines, surface where models break down, and demonstrate the right *evaluation* discipline — which matters more in production than chasing the lowest possible MAPE on a too-small holdout.
 
@@ -32,11 +32,17 @@ _data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").ex
 df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 df["month"] = df["date"].dt.to_period("M").dt.to_timestamp()
 
+# Drop rows whose product_group / department couldn't be derived from the
+# source (real data has ~5% of rows without a usable Warengruppe code).
+# Keeping them would create an empty-string series in the backtest output.
+df_cat  = df[df["product_group"].astype(str) != ""].copy()
+df_dept = df[df["department"].astype(str)    != ""].copy()
+
 monthly = (
-    df.groupby(["product_group", "month"])["gross_price"].sum()
-      .unstack(fill_value=0.0)
-      .stack().rename("revenue").reset_index()
-      .sort_values(["product_group", "month"])
+    df_cat.groupby(["product_group", "month"])["gross_price"].sum()
+          .unstack(fill_value=0.0)
+          .stack().rename("revenue").reset_index()
+          .sort_values(["product_group", "month"])
 )
 
 print(f"Categories: {monthly['product_group'].nunique()}, "
@@ -186,15 +192,15 @@ The above runs at *Category* level (10 series). The catalog also has a *Departme
 
 ```{python}
 #| label: department-backtest
-df_dept = (
-    df.groupby(["department", "month"])["gross_price"].sum()
-      .unstack(fill_value=0).stack().rename("revenue").reset_index()
-      .sort_values(["department", "month"])
+monthly_dept = (
+    df_dept.groupby(["department", "month"])["gross_price"].sum()
+           .unstack(fill_value=0).stack().rename("revenue").reset_index()
+           .sort_values(["department", "month"])
 )
 
 dept_rows = []
-for dept in sorted(df_dept["department"].unique()):
-    s = df_dept[df_dept["department"] == dept].set_index("month")["revenue"].asfreq("MS")
+for dept in sorted(monthly_dept["department"].unique()):
+    s = monthly_dept[monthly_dept["department"] == dept].set_index("month")["revenue"].asfreq("MS")
     train, test = s.iloc[:-HORIZON], s.iloc[-HORIZON:]
     preds = fit_predict(train.values, HORIZON)
     for model, p in preds.items():
