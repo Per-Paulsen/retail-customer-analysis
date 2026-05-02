@@ -307,7 +307,7 @@ The catalog has a 5-level hierarchy (Department → Category → Family → Mode
 | 04 CLV (BG/NBD) | Customer | The level above all of these — but the *unit of value* is the basket euro, which doesn't depend on product granularity. |
 | 06 Survival | Customer + Family covariates | Customer-level outcome; basket-feature covariates use Family. |
 | 07 Forecasting | Both Department and Category | Department for executive view (6 series, more signal), Category for operational planning (10 series, finer detail). |
-| 08 Embeddings | Family | Could go to SKU but at 66 SKUs the embedding space gets sparse. |
+| 08 Embeddings | **SKU** (`article_id`) | Substitution lookup — the operational use case — needs SKU granularity to answer "which `bed` model is closest to the out-of-stock one". Family level would collapse all sofa SKUs to one point. |
 | 09 Causal uplift | Customer + Family covariates | Same logic as Survival. |
 
 The common pattern: **start at Family, only step up or down when there's a specific reason**. Step up to Department when individual categories are too sparse (Forecasting on Outdoor / Storage). Step down to SKU only when SKU-level decisions are at stake (inventory, replenishment).
