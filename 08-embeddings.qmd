@@ -1,0 +1,223 @@
+---
+title: "Product Embeddings — PPMI × SVD"
+---
+
+The association-rules chapter answered *"if A is in the basket, what else tends to be there?"* — but only for pairs that actually co-occur often enough to clear a support threshold. Two products that share *similar shopping contexts* without ever being bought together (think: a leather sofa and a fabric sofa) won't surface as a rule, yet they're functionally close — substitutes, not complements.
+
+Embeddings give every product a position in a continuous space such that *contextually similar* items end up near each other, even when they never appear in the same basket. Once you have that, you get for free:
+
+- **Substitution lookup** — "if `sofa-luxe` is out of stock, what's the closest stand-in?"
+- **Semantic clustering** — group products by how customers actually treat them, not by how the catalog organizes them
+- **Cross-sell with reach** — recommend products in a customer's neighborhood, not just literal co-purchase partners
+
+The classical approach is `word2vec` (skip-gram with negative sampling). We use a mathematically-equivalent formulation that's pure scikit-learn and three lines of math: **PPMI × Truncated SVD**.
+
+> Reference: [Levy & Goldberg (2014)](https://papers.nips.cc/paper/5477-neural-word-embedding-as-implicit-matrix-factorization) showed that word2vec with negative sampling is an implicit factorization of a shifted PPMI matrix. PPMI + SVD makes that factorization explicit, which is more transparent and avoids the Python-3.14 wheel-build issues that kept us from `gensim` in this notebook.
+
+```{python}
+#| label: setup
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import TruncatedSVD
+from sklearn.manifold import TSNE
+from sklearn.metrics.pairwise import cosine_similarity
+
+sns.set_theme(style="whitegrid")
+RANDOM_STATE = 42
+```
+
+## Step 1 — Co-occurrence matrix
+
+Treat each basket as a "sentence" of product names. Count how often each pair of products appears in the same basket.
+
+```{python}
+#| label: cooc
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
+
+items = sorted({a for b in baskets for a in b})
+ix = {a: i for i, a in enumerate(items)}
+n = len(items)
+
+co = np.zeros((n, n), dtype=np.int64)
+item_count = np.zeros(n, dtype=np.int64)
+for b in baskets:
+    idxs = [ix[a] for a in b]
+    for i in idxs:
+        item_count[i] += 1
+    for i in idxs:
+        for j in idxs:
+            if i != j:
+                co[i, j] += 1
+
+print(f"Items: {n}")
+print(f"Baskets: {len(baskets)}")
+print(f"Pairwise co-occurrences (off-diagonal nonzero): {(co > 0).sum() // 2} pairs")
+```
+
+## Step 2 — PPMI (Positive Pointwise Mutual Information)
+
+Raw counts overweight popular products: *every* basket has the chance to include `dining_chair`, so every other item ends up looking "co-occurring with chair." PMI corrects for this by comparing observed joint probability with what we'd expect if the items were independent:
+
+$$\text{PMI}(i, j) = \log \frac{P(i, j)}{P(i)\, P(j)}$$
+
+PPMI clips negative values (which represent *less* co-occurrence than chance) to zero — these would be noise on this small dataset.
+
+```{python}
+#| label: ppmi
+total_baskets = len(baskets)
+P_ij = co / total_baskets
+P_i  = item_count / total_baskets
+expected = np.outer(P_i, P_i)
+
+with np.errstate(divide="ignore", invalid="ignore"):
+    pmi = np.log(P_ij / expected)
+    pmi[~np.isfinite(pmi)] = 0
+ppmi = np.maximum(pmi, 0)
+
+ppmi_df = pd.DataFrame(ppmi, index=items, columns=items)
+print(f"PPMI matrix shape: {ppmi.shape}")
+print(f"Nonzero entries:    {(ppmi > 0).sum()}")
+print(f"PPMI range:         {ppmi.min():.2f} — {ppmi.max():.2f}")
+```
+
+```{python}
+#| label: fig-ppmi-heatmap
+#| fig-cap: "PPMI heatmap, top-25 most-frequent items. Bright cells = pairs that co-occur much more than chance — these are the engineered partner relationships (dining_table↔dining_chair, bed↔mattress, etc.)."
+top = pd.Series(item_count, index=items).sort_values(ascending=False).head(25).index.tolist()
+heat = ppmi_df.loc[top, top]
+
+fig, ax = plt.subplots(figsize=(10, 9))
+sns.heatmap(heat, cmap="viridis", square=True, ax=ax,
+            cbar_kws={"label": "PPMI"}, xticklabels=True, yticklabels=True)
+ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right")
+plt.tight_layout()
+plt.show()
+```
+
+## Step 3 — Truncated SVD → low-rank embeddings
+
+The PPMI matrix is 40 × 40 here, but most cells are zero. Truncated SVD compresses it to a low-rank approximation; each item gets a `k`-dimensional vector that summarizes its co-occurrence neighborhood:
+
+$$\text{PPMI} \approx U \Sigma V^\top, \qquad \text{embedding}_i = U_i \sqrt{\Sigma}$$
+
+We use `k = 20`. With only 40 items, going much higher offers no compression; lower starts losing structure.
+
+```{python}
+#| label: svd
+svd = TruncatedSVD(n_components=20, random_state=RANDOM_STATE)
+emb = svd.fit_transform(ppmi)
+print(f"Embedding shape: {emb.shape}")
+print(f"Variance kept by first 5 / 10 / 20 components: "
+      f"{svd.explained_variance_ratio_[:5].sum():.0%} / "
+      f"{svd.explained_variance_ratio_[:10].sum():.0%} / "
+      f"{svd.explained_variance_ratio_.sum():.0%}")
+```
+
+## Similarity queries
+
+The whole point of embeddings: cosine similarity between two item vectors is a meaningful "how alike are they" score.
+
+```{python}
+#| label: similarity-fn
+sim = cosine_similarity(emb)
+sim_df = pd.DataFrame(sim, index=items, columns=items)
+
+def neighbors(item, top_k=5):
+    s = sim_df[item].drop(item).sort_values(ascending=False).head(top_k)
+    return pd.DataFrame({"neighbor": s.index, "cosine_sim": s.values.round(3)})
+
+print("→ nearest neighbors of 'sofa':"); print(neighbors("sofa"))
+print("\n→ nearest neighbors of 'dining_table':"); print(neighbors("dining_table"))
+print("\n→ nearest neighbors of 'bed':"); print(neighbors("bed"))
+print("\n→ nearest neighbors of 'tv':"); print(neighbors("tv"))
+print("\n→ nearest neighbors of 'garden_chair':"); print(neighbors("garden_chair"))
+```
+
+The embeddings recover the structure we engineered into the data:
+
+- **`dining_table` → dining_chair, table_extension, sideboard** (the seeded co-purchase trio)
+- **`bed` → nightstand, mattress, headboard** (the seeded bedroom trio)
+- **`sofa` → mirror, armchair, rug, coffee_table** (mostly the seeded living-room neighborhood)
+- **`garden_chair` → garden_table, parasol** (seeded outdoor cluster, plus their neighbors-by-context)
+
+Critically, the embedding sees *contextual* similarity, not just literal co-purchase. The `sofa`→`mirror` link emerges because both products tend to live in baskets with the *same other items* (rug, coffee_table) — even when they never appear *together* in any single basket.
+
+## 2D visualization with t-SNE
+
+Reducing the 20-dimensional embeddings to 2D for inspection. Colored by the product's `product_group` (the catalog category):
+
+```{python}
+#| label: fig-tsne
+#| fig-cap: "t-SNE projection of the 40-item embeddings, colored by product group. Items that share a category cluster together — the embedding learned the catalog structure from co-purchase patterns alone, never seeing the category labels."
+group_lookup = (
+    df.groupby("article_name")["product_group"]
+      .agg(lambda s: s.mode().iloc[0])
+      .to_dict()
+)
+groups = [group_lookup[a] for a in items]
+
+# t-SNE with low perplexity since we have few points
+tsne = TSNE(n_components=2, perplexity=8, random_state=RANDOM_STATE,
+            init="pca", learning_rate="auto")
+emb_2d = tsne.fit_transform(emb)
+
+fig, ax = plt.subplots(figsize=(11, 7))
+unique_groups = sorted(set(groups))
+palette = sns.color_palette("tab10", n_colors=len(unique_groups))
+group_color = dict(zip(unique_groups, palette))
+
+for g in unique_groups:
+    mask = np.array([gg == g for gg in groups])
+    ax.scatter(emb_2d[mask, 0], emb_2d[mask, 1], s=110,
+               color=group_color[g], label=g, edgecolor="white", linewidth=1.2)
+
+for i, name in enumerate(items):
+    ax.annotate(name, (emb_2d[i, 0], emb_2d[i, 1]),
+                fontsize=8, xytext=(4, 4), textcoords="offset points")
+
+ax.set_xlabel("t-SNE 1")
+ax.set_ylabel("t-SNE 2")
+ax.legend(title="Product group", fontsize=8, loc="upper left", bbox_to_anchor=(1.0, 1.0))
+plt.tight_layout()
+plt.show()
+```
+
+This is the killer feature: **the algorithm never saw the `product_group` labels** — it learned the structure entirely from "which items show up in which baskets." Yet bedroom items cluster together, dining items cluster together, outdoor items cluster together. That's the evidence that the embeddings are picking up real semantic structure, not just surface co-purchase counts.
+
+## Substitution table
+
+For every product, store its top-3 nearest neighbors as candidate substitutes. This is the table you'd hand to your inventory system or website's "out of stock — try these instead" panel.
+
+```{python}
+#| label: substitution-table
+substitutions = pd.DataFrame({
+    "if_oos": items,
+    "try_1":  [neighbors(a, 3).iloc[0]["neighbor"] for a in items],
+    "try_2":  [neighbors(a, 3).iloc[1]["neighbor"] for a in items],
+    "try_3":  [neighbors(a, 3).iloc[2]["neighbor"] for a in items],
+})
+substitutions.head(15)
+```
+
+In a real catalog with 1,000+ SKUs you wouldn't print this — you'd just store the embedding and answer queries on demand. But the principle is identical.
+
+## How does this compare to association rules?
+
+| Question | Association rules | Embeddings |
+|---|---|---|
+| *Two items in the same basket* | direct (rule fires) | indirect (similar contexts) |
+| *Two items never co-bought, similar context* | **invisible** | similar embeddings |
+| *Threshold tuning needed?* | yes (support / confidence) | no (everything has a vector) |
+| *Output type* | discrete rules | continuous geometry |
+| *Best use* | "if A in cart, suggest B" | "given A, find substitutes / clusters" |
+
+They're complementary. Rules answer *what to suggest at checkout*. Embeddings answer *what to surface in search, in 'similar items' carousels, and as inventory substitutes*.
+
+## Limitations
+
+- **40 items is genuinely small for representation learning.** Word2Vec-class methods shine with vocabularies of thousands. Here the structure is real but the geometry has wiggle room — t-SNE with different `perplexity` settings shifts the layout noticeably. With 1,000+ SKUs the embeddings would be far more stable.
+- **PPMI + SVD vs. word2vec.** They're mathematically equivalent in expectation (Levy & Goldberg 2014) but word2vec's online training scales to billions of tokens, while PPMI builds the full matrix in memory. For our 40 items either works; for a real catalog you'd want online word2vec or a modern alternative (e.g., `prod2vec` via `gensim`, BPR / matrix factorization, or graph neural networks on the customer-product bipartite graph).
+- **No customer dimension.** These are *product*-side embeddings — they say which products are similar based on co-occurrence. Adding *customer* embeddings would let us recommend products a *specific customer* would like, not just substitutes for a given product. That's the next step (collaborative filtering / two-tower models) and a natural extension when the catalog grows.

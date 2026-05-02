@@ -26,6 +26,7 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 | [04 — Customer Lifetime Value](04-clv-bgnbd.qmd) | Python | `lifetimes` (BG/NBD + Gamma-Gamma) | Per-customer CLV + P(alive), holdout-validated |
 | [06 — Survival Analysis](06-survival.qmd) | Python | `lifelines` (Kaplan-Meier + Cox PH) | Time-to-first-repeat curves, hazard ratios |
 | [07 — Demand Forecasting](07-forecasting.qmd) | Python | `statsmodels` (naive, ETS, SARIMA) | Per-category monthly revenue forecasts with backtest |
+| [08 — Product Embeddings](08-embeddings.qmd) | Python | `scikit-learn` (PPMI × SVD) | Per-item embeddings, substitution lookup, t-SNE |
 | [05 — Insights](05-insights.qmd) | Python | Cross-method synthesis | Recommendations + headline findings |
 | [Dashboard](dashboard.qmd) | Python | Quarto Dashboard, plotly | KPI tiles + tabbed visual explorer |
 | [Notebook — RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
@@ -76,6 +77,8 @@ The methodology is based on a 2017 internship project for a German retail compan
 
 **Demand forecasting.** Monthly revenue per product group projected three months ahead with four models (naive, seasonal naive, ETS, SARIMA), backtested on the last quarter and compared by MAE in EUR plus MAPE. The chapter is honest about how 24 months sits at the edge of what classical seasonal models can support — the right answer is often that simple baselines win, which is itself a finding.
 
+**Product embeddings.** Each item gets a 20-dimensional vector via PPMI (Positive Pointwise Mutual Information) on the basket co-occurrence matrix, factorized with Truncated SVD. Mathematically equivalent to word2vec with negative sampling (Levy & Goldberg 2014) but pure scikit-learn. Cosine similarity between vectors gives substitution candidates and t-SNE recovers the catalog category structure without ever seeing the labels.
+
 **Insights synthesis.** Per-product table joining BCG + RFM ranks; per-rule table annotating top-tier consequents; Lorenz-style CLV concentration curve. Closes with five business recommendations grounded in the cross-cuts.
 
 ## Repository layout
@@ -91,6 +94,7 @@ retail-customer-analysis/
 ├── 05-insights.qmd         # Chapter 5 — Python (synthesis)
 ├── 06-survival.qmd         # Chapter 6 — Python (survival analysis)
 ├── 07-forecasting.qmd      # Chapter 7 — Python (demand forecasting)
+├── 08-embeddings.qmd       # Chapter 8 — Python (product embeddings)
 ├── dashboard.qmd           # Quarto dashboard view
 ├── notebooks/
 │   └── rfm_clustering.ipynb        # Standalone Colab notebook

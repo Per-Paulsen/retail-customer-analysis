@@ -18,39 +18,9 @@ The list is ranked by *expected portfolio impact* given the data we have.
 
 ---
 
-## 3. Product Embeddings — Prod2Vec / Item2Vec
+## ✅ 3. Product Embeddings — PPMI × SVD
 
-**Question it answers:** *Which products are functionally similar? If A is out of stock, what does the customer reach for instead? Where are the gaps in our catalog?*
-
-Apply word2vec (skip-gram) on transactions, treating each basket as a "sentence" of product names. Similar products end up with similar vectors — even if they were never purchased together, as long as they have similar co-purchase neighborhoods.
-
-**Tools**
-- Python: `gensim` for Word2Vec, `umap-learn` or `scikit-learn` t-SNE for visualization, `faiss` for similarity lookup
-
-**Sketch**
-
-```python
-from gensim.models import Word2Vec
-import umap
-
-baskets = df.groupby("transaction_id")["article_name"].apply(list).tolist()
-model = Word2Vec(sentences=baskets, vector_size=32, window=5, min_count=3,
-                 sg=1, epochs=200, seed=42)
-
-# Embedding for one product
-sofa_vec = model.wv["sofa"]
-# Most similar items
-print(model.wv.most_similar("sofa", topn=5))
-
-# 2D visualization with UMAP
-emb_2d = umap.UMAP(random_state=42).fit_transform(model.wv.vectors)
-```
-
-**Data requirements:** ✅ have baskets. *Caveat:* with 40 unique product names, embeddings are largely a didactic exercise — there's not much to learn beyond what association rules already show. With 1,000+ SKUs the technique becomes genuinely valuable.
-
-**Effort:** 1 chapter, ~half-session. The visualization (UMAP scatter colored by product group) is the wow piece.
-
-**Modern extension:** train embeddings *with customer context* (CBOW with customer_id as a token) — gets you toward neural collaborative filtering.
+**Status:** **Implemented** as [Chapter 08 — Product Embeddings](../08-embeddings.qmd). Pivoted from `gensim`'s word2vec to PPMI + Truncated SVD because gensim's wheel build failed on Python 3.14 — and the two are mathematically equivalent (Levy & Goldberg 2014). Outputs cosine-similarity tables, a t-SNE projection that recovers the catalog category structure without ever seeing the labels, and a substitution lookup. With 40 product names the geometry is real but a bit noisy; the technique scales cleanly to thousands of SKUs.
 
 ---
 

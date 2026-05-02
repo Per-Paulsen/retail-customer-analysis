@@ -22,6 +22,8 @@ website:
             text: Survival (Time-to-Repeat)
           - href: 07-forecasting.qmd
             text: Demand Forecasting
+          - href: 08-embeddings.qmd
+            text: Product Embeddings
       - href: 05-insights.qmd
         text: Insights
       - href: dashboard.html
