@@ -13,7 +13,8 @@ End-to-end customer and product analytics on a synthetic retail transaction data
 5. [Survival Analysis](06-survival.qmd) — Kaplan-Meier and Cox PH on time-to-first-repeat (Python / `lifelines`).
 6. [Demand Forecasting](07-forecasting.qmd) — monthly revenue per product group with naive, ETS and SARIMA baselines (Python / `statsmodels`).
 7. [Product Embeddings](08-embeddings.qmd) — co-occurrence × PPMI × SVD for substitution lookup and semantic clustering (Python / scikit-learn).
-8. [Insights](05-insights.qmd) — synthesis of the upstream chapters with cross-cuts and headline recommendations.
+8. [Causal Uplift](09-causal-uplift.qmd) — meta-learner CATE estimation: did the discount cause the repeat purchase? (Python / scikit-learn).
+9. [Insights](05-insights.qmd) — synthesis of the upstream chapters with cross-cuts and headline recommendations.
 
 Plus a [**dashboard view**](dashboard.html) of the same findings, and a standalone [Python notebook](notebooks/rfm_clustering.ipynb) that replays the RFM analysis in Colab.
 

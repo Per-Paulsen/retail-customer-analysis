@@ -27,6 +27,7 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 | [06 — Survival Analysis](06-survival.qmd) | Python | `lifelines` (Kaplan-Meier + Cox PH) | Time-to-first-repeat curves, hazard ratios |
 | [07 — Demand Forecasting](07-forecasting.qmd) | Python | `statsmodels` (naive, ETS, SARIMA) | Per-category monthly revenue forecasts with backtest |
 | [08 — Product Embeddings](08-embeddings.qmd) | Python | `scikit-learn` (PPMI × SVD) | Per-item embeddings, substitution lookup, t-SNE |
+| [09 — Causal Uplift](09-causal-uplift.qmd) | Python | `scikit-learn` (T/S meta-learners) | Per-customer CATE, naive ATE, injection sanity check |
 | [05 — Insights](05-insights.qmd) | Python | Cross-method synthesis | Recommendations + headline findings |
 | [Dashboard](dashboard.qmd) | Python | Quarto Dashboard, plotly | KPI tiles + tabbed visual explorer |
 | [Notebook — RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
@@ -79,6 +80,8 @@ The methodology is based on a 2017 internship project for a German retail compan
 
 **Product embeddings.** Each item gets a 20-dimensional vector via PPMI (Positive Pointwise Mutual Information) on the basket co-occurrence matrix, factorized with Truncated SVD. Mathematically equivalent to word2vec with negative sampling (Levy & Goldberg 2014) but pure scikit-learn. Cosine similarity between vectors gives substitution candidates and t-SNE recovers the catalog category structure without ever seeing the labels.
 
+**Causal uplift.** Treatment = first-purchase discount, outcome = second purchase, covariates = first-basket characteristics. T- and S-learner meta-learners estimate per-customer CATE; naive ATE confidence intervals straddle zero (the right answer for our random-discount synthetic data). An injection sanity check confirms the technique recovers structure when present. Caveats are loud: random treatment assignment is the easy case; observational data needs propensity weighting or doubly-robust estimators.
+
 **Insights synthesis.** Per-product table joining BCG + RFM ranks; per-rule table annotating top-tier consequents; Lorenz-style CLV concentration curve. Closes with five business recommendations grounded in the cross-cuts.
 
 ## Repository layout
@@ -95,6 +98,7 @@ retail-customer-analysis/
 ├── 06-survival.qmd         # Chapter 6 — Python (survival analysis)
 ├── 07-forecasting.qmd      # Chapter 7 — Python (demand forecasting)
 ├── 08-embeddings.qmd       # Chapter 8 — Python (product embeddings)
+├── 09-causal-uplift.qmd    # Chapter 9 — Python (causal uplift)
 ├── dashboard.qmd           # Quarto dashboard view
 ├── notebooks/
 │   └── rfm_clustering.ipynb        # Standalone Colab notebook

@@ -24,6 +24,8 @@ website:
             text: Demand Forecasting
           - href: 08-embeddings.qmd
             text: Product Embeddings
+          - href: 09-causal-uplift.qmd
+            text: Causal Uplift
       - href: 05-insights.qmd
         text: Insights
       - href: dashboard.html

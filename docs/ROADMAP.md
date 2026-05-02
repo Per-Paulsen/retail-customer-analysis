@@ -24,39 +24,11 @@ The list is ranked by *expected portfolio impact* given the data we have.
 
 ---
 
-## 4. Causal Uplift — Did the Discount Cause the Purchase?
+## ✅ 4. Causal Uplift — Did the Discount Cause the Repeat Purchase?
 
-**Question it answers:** *Among customers who got a discount and bought, how many would have bought anyway? Should we target discounts narrowly (uplift > 0) or stop offering them altogether?*
+**Status:** **Implemented** as [Chapter 09 — Causal Uplift](../09-causal-uplift.qmd). Naive ATE plus T-learner and S-learner meta-learners on first-purchase discount → repurchase. CIs straddle zero (correct for random-discount synthetic data); a synthetic injection check confirms the technique recovers structure when present. Pivoted from `econml`/`causalml` to plain scikit-learn — the meta-learners are 5-line implementations and the heavyweight causal libraries had Python 3.14 wheel-build issues.
 
-This is a **causal** question, not a predictive one. Standard ML predicts "given these features, how likely is purchase?" Uplift modeling predicts "given these features, how much does the *treatment* shift purchase probability?"
-
-**Tools**
-- Python: [`econml`](https://econml.azurewebsites.net/) (Microsoft Research), [`causalml`](https://github.com/uber/causalml) (Uber), [`dowhy`](https://www.pywhy.org/dowhy/)
-
-**Sketch**
-
-```python
-from econml.metalearners import TLearner
-from sklearn.ensemble import RandomForestRegressor
-
-# Treatment = had discount, outcome = future revenue / repurchase
-# Confounders = customer features (RFM, CLV, cohort)
-T = (df["discount_amount"] > 0).astype(int)   # treatment indicator
-Y = future_revenue_per_customer                # outcome
-X = customer_feature_matrix                    # confounders
-
-learner = TLearner(models=RandomForestRegressor())
-learner.fit(Y, T, X=X)
-
-# Per-customer uplift estimate
-uplift = learner.effect(X)
-```
-
-**Data requirements:** 🟡 *partial.* We have `discount_amount` and `discount_type` per line item. **Caveat that needs to be loud in the chapter:** in the synthetic data, discounts are randomly assigned. In real data, *they aren't* — discounts go to specific customers in specific contexts, which creates confounding. Causal claims from observational data require either an RCT or careful instrumental-variable / propensity-score arguments. With a real dataset, this analysis would require knowing *how* discounts are assigned in the source business.
-
-**Effort:** 1 chapter, ~full-session. The methodology section needs to be careful about what *can* and *cannot* be claimed.
-
-**Why this matters:** uplift modeling is the modern frontier of marketing analytics. It's where data science meets causal inference. A solid chapter here is the most "senior-level" piece of the portfolio.
+The chapter is loud about the methodology caveats: random treatment assignment in the data makes the analysis clean, but observational data with confounding needs propensity weighting / doubly-robust estimators / DR-learner before causal claims hold.
 
 ---
 
