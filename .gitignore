@@ -43,6 +43,11 @@ data/raw/*
 !data/raw/.gitkeep
 !data/raw/README.md
 
+# Render-time outputs that would leak real data if regenerated locally with
+# raw/transactions.csv present. Chapter 00 no longer persists audit_flags.csv,
+# but the ignore stays as belt-and-braces against future render-side outputs.
+data/synthetic/audit_flags.csv
+
 # Local-only operating notes / runbooks
 LOCAL_DEV.md
 LOCAL_*.md

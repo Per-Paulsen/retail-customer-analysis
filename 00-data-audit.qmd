@@ -184,16 +184,15 @@ After this chapter, every analysis downstream has access to:
 | `flag_discontinued` | Both `low_volume` AND `long_silent` — operationally end-of-life |
 
 ```{python}
-#| label: write-audit-table
+#| label: audit-table
 audit_table = article_summary.assign(
     flag_discontinued=lambda d: d["flag_low_volume"] & d["flag_long_silent"]
 )[["article_name", "product_group", "revenue", "revenue_share",
    "days_silent", "flag_low_volume", "flag_long_silent", "flag_discontinued"]]
 
-# Persist for downstream chapters that want to read the audit decisions
-audit_table.to_csv("data/synthetic/audit_flags.csv", sep=";", index=False)
-print("Wrote data/synthetic/audit_flags.csv "
-      f"({len(audit_table)} rows, {audit_table['flag_discontinued'].sum()} flagged as discontinued)")
+print(f"{len(audit_table)} articles audited, "
+      f"{int(audit_table['flag_discontinued'].sum())} flagged as discontinued")
+audit_table.head(10).round({"revenue": 0, "revenue_share": 4})
 ```
 
 ## A note on iteration
