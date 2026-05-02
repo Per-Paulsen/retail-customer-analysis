@@ -139,26 +139,38 @@ simple = rules[
 simple["antecedent"] = simple["antecedents"].apply(lambda s: next(iter(s)))
 simple["consequent"] = simple["consequents"].apply(lambda s: next(iter(s)))
 
-# Apply triage — same logic as chapter 01
+# Apply triage — same logic as chapter 01 (accessory + symmetry from raw baskets)
+ACCESSORY_ITEMS = {"headboard", "nightstand", "table_extension"}
 bundle_lookup = (
     df.drop_duplicates("article_name").set_index("article_name")["bundle_group"]
       .fillna("").to_dict()
 )
-conf_map_simple = {(r["antecedent"], r["consequent"]): r["confidence"] for _, r in simple.iterrows()}
-simple["a_bundle"] = simple["antecedent"].map(bundle_lookup)
-simple["c_bundle"] = simple["consequent"].map(bundle_lookup)
-simple["within_bundle"] = (
-    (simple["a_bundle"] != "") & (simple["a_bundle"] == simple["c_bundle"])
-)
+basket_sets_05 = df.groupby("transaction_id")["article_name"].apply(set).tolist()
+
+def cond_prob_05(a, b):
+    n_b = sum(1 for s in basket_sets_05 if b in s)
+    if n_b == 0:
+        return 0.0
+    n_both = sum(1 for s in basket_sets_05 if a in s and b in s)
+    return n_both / n_b
+
 simple["reverse_conf"] = simple.apply(
-    lambda r: conf_map_simple.get((r["consequent"], r["antecedent"]), 0.0), axis=1
+    lambda r: cond_prob_05(r["antecedent"], r["consequent"]), axis=1
 )
 simple["symmetry"] = simple.apply(
     lambda r: min(r["confidence"], r["reverse_conf"]) / max(r["confidence"], r["reverse_conf"])
         if max(r["confidence"], r["reverse_conf"]) > 0 else 0.0,
     axis=1,
 )
-simple = simple[~simple["within_bundle"] & (simple["symmetry"] < 0.75)].copy()
+simple["within_bundle"] = simple.apply(
+    lambda r: bundle_lookup.get(r["antecedent"], "") == bundle_lookup.get(r["consequent"], "")
+              and bundle_lookup.get(r["antecedent"], "") != "",
+    axis=1,
+)
+simple["accessory_to_primary"] = (
+    simple["antecedent"].isin(ACCESSORY_ITEMS) & simple["within_bundle"]
+)
+simple = simple[~simple["accessory_to_primary"] & (simple["symmetry"] < 0.7)].copy()
 
 # Annotate with BCG / RFM rank of the consequent
 simple["consequent_bcg"] = simple["consequent"].map(products["bcg_rank"])
@@ -310,7 +322,7 @@ Before recommendations, classify every finding the chapters surfaced. This separ
 
 1. **Revenue is brutally concentrated: 10 products = 73% of catalog revenue.** Of 40 distinct product names and ~€2.54 M in two-year revenue, the top 10 (`sofa`, `bed`, `mattress`, `dining_table`, `tv`, `armchair`, `coffee_table`, `dining_chair`, `wardrobe`, `sideboard`) account for €1.86 M. The remaining 30 products fight over €0.68 M. Anything you do with the top 10 will move the needle on the whole business; the rest are noise from a P&L standpoint.
 
-2. **Co-purchase patterns are strong and exploitable** — once filtered to *actionable* rules (cross-bundle, asymmetric). Top examples after the triage in chapter 01: `dining_table → dining_chair` (81%, lift 4.9), `kitchen_table → kitchen_chair` (74%, lift 9.5), `garden_table → garden_chair` (67%, lift 14.2). Within-bundle pairs like `bed → mattress` and `headboard → bed` *also fire at high confidence* but are filed as definitional plumbing — you can't have a bed without a mattress, so the rule discovers the catalog structure rather than customer behavior. Even the *misses* on the actionable rules are quantifiable: 52 of 271 `dining_table` baskets did not include chairs — at an average chair price of €153 that's roughly **€8,000 of forgone revenue** from a single rule, on a single product.
+2. **Co-purchase patterns are strong and exploitable** — once filtered to the *actionable* set in chapter 01. Top examples after the triage: `dining_table → dining_chair` (81%, lift 4.9, asymmetric), `kitchen_table → kitchen_chair` (74%, lift 9.5, asymmetric), `garden_table → garden_chair` (67%, lift 14.2, asymmetric). Filtered out as plumbing: `bed → mattress` (symmetric — you can't really have one without the other), `headboard → bed` (accessory implies primary). Both fire at high raw confidence but encode catalog structure, not customer choice. Even the *misses* on the actionable rules are quantifiable: 52 of 271 `dining_table` baskets did not include chairs — at an average chair price of €153 that's roughly **€8,000 of forgone revenue** from a single rule, on a single product.
 
 3. **BCG and RFM agree on the tiers.** Products in the top BCG cluster (high share + healthy growth) overlap heavily with the top RFM cluster (recent + frequent + valuable). Different methods, same conclusion: there's a small set of structurally healthy products and a longer tail.
 

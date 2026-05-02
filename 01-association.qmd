@@ -126,12 +126,14 @@ print(f"Total rules found: {len(rules)}")
 
 ### Triage before display — separating insight from plumbing
 
-A naive sort by confidence would put rules like `bed → mattress` and `headboard → bed` at the top. Those are textbook *definitional* relationships — the bed *system* sells as a unit, customers don't choose between buying-the-mattress-or-not. Showing them as "top findings" would mistake plumbing for insight.
+A naive sort by confidence puts rules like `bed → mattress` and `headboard → bed` at the top. Those are textbook *definitional* relationships — bed components sell as a system; customers don't really choose between buying-the-mattress-or-not. But not every within-bundle pair is plumbing: `dining_table → dining_chair` is also within-bundle yet behaviorally meaningful — chairs are bought without tables (existing tables, replacements, sets) but tables almost never without chairs.
 
-We classify every rule before displaying anything, using two signals from the [data audit](00-data-audit.qmd):
+The right filter combines two signals:
 
-- **Bundle membership** — if antecedent and consequent share a `bundle_group`, the rule is within-system. Within-bundle co-purchase is mostly definitional.
-- **Symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`. Rules near 1.0 are symmetric: you can't have one without the other. Asymmetric rules are the *behavioral* ones — one side drives the other.
+- **Symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`, computed from raw basket data so we can read both directions even when one falls below the apriori threshold. Symmetric rules (≥ 0.7) are pairs you can't have one without the other (`bed ↔ mattress`).
+- **Accessory marker** — a small curated set of items that exist *only* as accessories of a primary product (`headboard`, `nightstand`, `table_extension`). A rule from one of these into its bundle's primary product is structural plumbing.
+
+Rules that fail both filters — neither symmetric nor accessory-to-primary — are the ones a stakeholder should see.
 
 ```{python}
 #| label: simple-and-triage
@@ -146,40 +148,50 @@ simple = (
     .reset_index(drop=True)
 )
 
+ACCESSORY_ITEMS = {"headboard", "nightstand", "table_extension"}
 bundle_lookup = (
     df.drop_duplicates("article_name").set_index("article_name")["bundle_group"]
       .fillna("").to_dict()
 )
-conf_map = {(r["antecedent"], r["consequent"]): r["confidence"] for _, r in simple.iterrows()}
+basket_sets = df.groupby("transaction_id")["article_name"].apply(set).tolist()
 
-simple = simple.assign(
-    a_bundle=lambda d: d["antecedent"].map(bundle_lookup),
-    c_bundle=lambda d: d["consequent"].map(bundle_lookup),
-)
-simple["within_bundle"] = (
-    (simple["a_bundle"] != "") & (simple["a_bundle"] == simple["c_bundle"])
-)
+def cond_prob(a, b):
+    """P(a | b) — fraction of baskets containing b that also contain a."""
+    n_b = sum(1 for s in basket_sets if b in s)
+    if n_b == 0:
+        return 0.0
+    n_both = sum(1 for s in basket_sets if a in s and b in s)
+    return n_both / n_b
+
 simple["reverse_conf"] = simple.apply(
-    lambda r: conf_map.get((r["consequent"], r["antecedent"]), 0.0), axis=1
+    lambda r: cond_prob(r["antecedent"], r["consequent"]), axis=1
 )
 simple["symmetry"] = simple.apply(
     lambda r: min(r["confidence"], r["reverse_conf"]) / max(r["confidence"], r["reverse_conf"])
         if max(r["confidence"], r["reverse_conf"]) > 0 else 0.0,
     axis=1,
 )
+simple["within_bundle"] = simple.apply(
+    lambda r: bundle_lookup.get(r["antecedent"], "") == bundle_lookup.get(r["consequent"], "")
+              and bundle_lookup.get(r["antecedent"], "") != "",
+    axis=1,
+)
+simple["accessory_to_primary"] = (
+    simple["antecedent"].isin(ACCESSORY_ITEMS) & simple["within_bundle"]
+)
 
 def classify(row):
-    if row["within_bundle"]:
-        return "definitional (within bundle)"
-    if row["symmetry"] >= 0.75:
-        return "definitional (symmetric)"
+    if row["accessory_to_primary"]:
+        return "definitional (accessory → primary)"
+    if row["symmetry"] >= 0.7:
+        return "definitional (symmetric pair)"
     return "actionable"
 
 simple["triage"] = simple.apply(classify, axis=1)
 
 print("Rules by triage class:")
 for cls, n in simple["triage"].value_counts().items():
-    print(f"  {cls:35s} {n}")
+    print(f"  {cls:40s} {n}")
 ```
 
 ### Top *actionable* rules — the headline
@@ -189,8 +201,9 @@ These are the rules a stakeholder should see. Cross-bundle, asymmetric: one prod
 ```{python}
 #| label: actionable-rules
 actionable = simple[simple["triage"] == "actionable"].sort_values("confidence", ascending=False)
-actionable.head(10)[["antecedent", "consequent", "support", "confidence", "lift", "symmetry"]]\
-    .round({"support": 4, "confidence": 3, "lift": 2, "symmetry": 2})
+actionable.head(10)[["antecedent", "consequent", "support", "confidence", "lift",
+                     "reverse_conf", "symmetry"]]\
+    .round({"support": 4, "confidence": 3, "lift": 2, "reverse_conf": 3, "symmetry": 2})
 ```
 
 These are deployable cross-sell triggers — exactly the rules to wire into "you might also need" prompts at checkout.
@@ -202,7 +215,7 @@ For completeness, the rules we filtered out as definitional. They're correct rul
 ```{python}
 #| label: plumbing-rules
 plumbing = simple[simple["triage"] != "actionable"].sort_values("confidence", ascending=False)
-plumbing.head(8)[["antecedent", "consequent", "confidence", "reverse_conf", "symmetry", "triage"]]\
+plumbing.head(10)[["antecedent", "consequent", "confidence", "reverse_conf", "symmetry", "triage"]]\
     .round({"confidence": 3, "reverse_conf": 3, "symmetry": 2})
 ```
 
