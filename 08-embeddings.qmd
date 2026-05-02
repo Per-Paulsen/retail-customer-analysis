@@ -142,7 +142,20 @@ def query(sku):
     print(neighbors(sku).to_string(index=False))
 
 # Pick representative SKUs across families
-for sku in ["L1001", "B3001", "D2001", "K9001", "U1001", "E6001"]:
+# Pick representative SKUs dynamically — one popular SKU from each of the
+# top product families. Works on both synthetic (66 SKUs) and real (3,500+ SKUs).
+sku_count = pd.Series(item_count, index=items)
+top_families = (
+    df[df["article_id"].isin(items)]
+      .groupby("article_name")["article_id"]
+      .apply(lambda s: s.value_counts().index[0])  # most popular SKU per family
+      .reset_index()
+      .merge(df.groupby("article_name").size().rename("n").reset_index(), on="article_name")
+      .sort_values("n", ascending=False)
+      .head(6)
+)
+sample_skus = top_families["article_id"].tolist()
+for sku in sample_skus:
     query(sku)
 ```
 

@@ -285,9 +285,14 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
         np.where(out["discount_type"] == 2, raw["_grund_ges"].fillna("").astype(str).str[:1], "")
     )
 
-    # Drop rows with no usable date or article
+    # Drop rows with no usable date or article (strict: NaN, empty, "nan" string)
     before = len(out)
-    out = out[out["date"].notna() & (out["article_name"] != "")].copy()
+    out = out[
+        out["date"].notna()
+        & out["article_name"].notna()
+        & (out["article_name"].astype(str).str.strip() != "")
+        & (out["article_name"].astype(str).str.lower() != "nan")
+    ].copy()
     if len(out) < before:
         print(f"  dropped {before - len(out)} rows with missing date/article")
 

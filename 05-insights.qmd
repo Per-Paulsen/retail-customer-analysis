@@ -199,7 +199,7 @@ summary = summary_data_from_transaction_data(
     observation_period_end=tx["date"].max(), freq="D",
 )
 bgf = BetaGeoFitter(penalizer_coef=0.001).fit(summary["frequency"], summary["recency"], summary["T"])
-returning_only = summary[summary["frequency"] >= 1].copy()
+returning_only = summary[(summary["frequency"] >= 1) & (summary["monetary_value"] > 0)].copy()
 ggf = GammaGammaFitter(penalizer_coef=0.01).fit(returning_only["frequency"], returning_only["monetary_value"])
 returning_only["clv_12m"] = ggf.customer_lifetime_value(
     bgf, returning_only["frequency"], returning_only["recency"], returning_only["T"],

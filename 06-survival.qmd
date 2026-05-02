@@ -116,7 +116,7 @@ first_tx_lines = df.merge(
 basket_features = first_tx_lines.groupby("customer_id").agg(
     first_basket_value=("gross_price", "sum"),
     first_n_items=("line_item", "count"),
-    first_top_group=("product_group", lambda s: s.mode().iloc[0]),
+    first_top_group=("product_group", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
     first_had_discount=("discount_amount", lambda s: (s > 0).any()),
 )
 
@@ -177,7 +177,7 @@ feature_cols = (
     ["log_first_value", "first_n_items", "first_had_discount"]
     + [c for c in cph_data.columns if c.startswith("first_top_group_")]
 )
-cph_input = cph_data[["duration", "event"] + feature_cols]
+cph_input = cph_data[["duration", "event"] + feature_cols].dropna()
 
 cph = CoxPHFitter(penalizer=0.01)
 cph.fit(cph_input, duration_col="duration", event_col="event")

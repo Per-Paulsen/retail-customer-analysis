@@ -127,7 +127,7 @@ clv_summary = summary_data_from_transaction_data(
 bgf = BetaGeoFitter(penalizer_coef=0.001).fit(
     clv_summary["frequency"], clv_summary["recency"], clv_summary["T"]
 )
-returning = clv_summary[clv_summary["frequency"] >= 1].copy()
+returning = clv_summary[(clv_summary["frequency"] >= 1) & (clv_summary["monetary_value"] > 0)].copy()
 ggf = GammaGammaFitter(penalizer_coef=0.01).fit(returning["frequency"], returning["monetary_value"])
 returning["clv_12m"] = ggf.customer_lifetime_value(
     bgf, returning["frequency"], returning["recency"], returning["T"],

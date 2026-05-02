@@ -35,9 +35,19 @@ cat("rows:", nrow(raw), "  baskets:", n_distinct(raw$transaction_id), "  items:"
 ```{r}
 #| label: build-transactions
 library(arules)
+# C locale needed for stable sort of items across baskets; without it, real
+# data with German characters (Kopfstütze, Eßtisch, …) hits a sparse-matrix
+# invariant violation when arules constructs its internal indexing.
+Sys.setlocale("LC_COLLATE", "C")
 
-baskets <- split(raw$article_name, raw$transaction_id)
-baskets <- lapply(baskets, unique)  # ensure no within-basket duplicates
+# Defensive: drop missing / empty article names before grouping. Real data
+# typically has a long tail of unparseable rows (returns, miscoded items, ...);
+# arules can't construct its sparse matrix if any items are NA.
+clean <- raw[!is.na(raw$article_name) & nchar(trimws(raw$article_name)) > 0, ]
+clean$article_name <- trimws(clean$article_name)
+
+baskets <- split(clean$article_name, clean$transaction_id)
+baskets <- lapply(baskets, function(b) sort(unique(b)))  # sort + dedupe
 trans   <- as(baskets, "transactions")
 summary(trans)
 ```

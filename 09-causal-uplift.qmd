@@ -55,7 +55,7 @@ basket = first_tx_lines.groupby("customer_id").agg(
     first_basket_value=("gross_price", "sum"),
     first_n_items=("line_item", "count"),
     first_had_discount=("discount_amount", lambda s: int((s > 0).any())),
-    first_top_group=("product_group", lambda s: s.mode().iloc[0]),
+    first_top_group=("product_group", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
 )
 
 data = first_tx.join(basket, how="inner")

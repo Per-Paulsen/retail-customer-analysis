@@ -187,7 +187,7 @@ summary[["frequency", "recency", "T", "p_alive", "exp_90d", "exp_365d"]].describ
 #| label: fig-p-alive
 #| fig-cap: "Distribution of P(alive). One-time buyers concentrate near the population baseline; repeat customers split between still-engaged (right) and lapsed (left tail)."
 fig, ax = plt.subplots(figsize=(8, 4))
-returning = summary[summary["frequency"] >= 1]
+returning = summary[(summary["frequency"] >= 1) & (summary["monetary_value"] > 0)]
 one_time = summary[summary["frequency"] == 0]
 ax.hist(returning["p_alive"], bins=30, alpha=0.7, color="steelblue", label=f"Returning customers (n={len(returning)})")
 ax.hist(one_time["p_alive"], bins=30, alpha=0.7, color="lightgrey", label=f"One-time buyers (n={len(one_time)})")
@@ -206,7 +206,7 @@ Gamma-Gamma estimates expected per-transaction value. It can only be fit on cust
 
 ```{python}
 #| label: fit-gamma-gamma
-returning = summary[summary["frequency"] >= 1].copy()
+returning = summary[(summary["frequency"] >= 1) & (summary["monetary_value"] > 0)].copy()
 
 ggf = GammaGammaFitter(penalizer_coef=0.01)
 ggf.fit(returning["frequency"], returning["monetary_value"])
