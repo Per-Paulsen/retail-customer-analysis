@@ -178,47 +178,150 @@ for q in [0.10, 0.20, 0.30, 0.50]:
 
 The top 20% of returning customers cover roughly half of forecast revenue — a clean Pareto. *(See the [dashboard](dashboard.html) for the Lorenz curve.)*
 
+## Sizing the recommendations
+
+Before turning to recommendations, pin down some concrete numbers. Each finding below is annotated with what it *would mean* in EUR or counts.
+
+```{python}
+#| label: sizing
+# --- Product side: revenue concentration ---
+total_revenue = products["value"].sum()
+top10_products = products.nlargest(10, "value")
+top10_share = top10_products["value"].sum() / total_revenue
+
+bottom_overlap = products[(products["bcg_rank"] == 4) & (products["rfm_rank"] == 4)]
+bottom_revenue_share = bottom_overlap["value"].sum() / total_revenue
+
+# --- Top association rule: missed cross-sell sizing ---
+top_rule = simple.iloc[0]
+ant, con = top_rule["antecedent"], top_rule["consequent"]
+basket_sets = df.groupby("transaction_id")["article_name"].apply(set)
+ant_baskets = basket_sets[basket_sets.apply(lambda s: ant in s)]
+ant_n = len(ant_baskets)
+con_in_ant = ant_baskets.apply(lambda s: con in s).sum()
+miss_n = ant_n - con_in_ant
+avg_con_price = df.loc[df["article_name"] == con, "gross_price"].mean()
+miss_eur = miss_n * avg_con_price
+
+# --- Customer side: CLV decile sizing ---
+n_returning = len(returning_sorted)
+total_clv_12m = returning_sorted["clv_12m"].sum()
+top10pct_n = int(0.10 * n_returning)
+top10pct_clv = returning_sorted.head(top10pct_n)["clv_12m"].sum()
+top20pct_clv = returning_sorted.head(2 * top10pct_n)["clv_12m"].sum()
+
+# --- Win-back zone customers ---
+clv_summary_with_alive = summary.copy()
+clv_summary_with_alive["p_alive"] = bgf.conditional_probability_alive(
+    summary["frequency"], summary["recency"], summary["T"]
+)
+winback_zone = clv_summary_with_alive[
+    (clv_summary_with_alive["p_alive"].between(0.4, 0.7))
+    & (clv_summary_with_alive["frequency"] >= 1)
+]
+
+# --- Discount spend ---
+total_discount_eur = float(df["discount_amount"].sum())
+discounted_lines = int((df["discount_amount"] > 0).sum())
+total_lines = len(df)
+
+# --- Survival drops ---
+first_dates = df.groupby("customer_id")["date"].min()
+second_dates = (
+    df.sort_values("date").groupby("customer_id")["date"].nth(1)
+)
+
+print("=" * 60)
+print("PRODUCT SIDE")
+print("=" * 60)
+print(f"Total catalog revenue:              €{total_revenue:>12,.0f}")
+print(f"Top 10 products:                    €{top10_products['value'].sum():>12,.0f}  ({top10_share:.0%} of total)")
+print(f"  the top 10:  {', '.join(top10_products.index.tolist())}")
+print()
+print(f"BCG=4 ∩ RFM=4 (delisting candidates): {len(bottom_overlap)} products, €{bottom_overlap['value'].sum():,.0f}  ({bottom_revenue_share:.1%} of total)")
+print(f"  members:    {', '.join(bottom_overlap.index.tolist()) or '(none)'}")
+print()
+print(f"Top rule:  {ant}  →  {con}")
+print(f"  {ant_n} baskets contained {ant};  {con_in_ant} ({con_in_ant/ant_n:.0%}) also bought {con}")
+print(f"  miss: {miss_n} baskets had {ant} but no {con};  upsell value @ avg €{avg_con_price:,.0f}/{con}: €{miss_eur:,.0f}")
+print()
+print("=" * 60)
+print("CUSTOMER SIDE")
+print("=" * 60)
+print(f"Returning customers:                 {n_returning}")
+print(f"Total forecast 12-month CLV:         €{total_clv_12m:>12,.0f}")
+print(f"  top 10% ({top10pct_n} customers):  €{top10pct_clv:,.0f}  ({top10pct_clv/total_clv_12m:.0%})")
+print(f"  top 20% ({2*top10pct_n} customers): €{top20pct_clv:,.0f}  ({top20pct_clv/total_clv_12m:.0%})")
+print()
+print(f"Win-back zone (P(alive) ∈ [0.4, 0.7], ≥1 prior purchase): {len(winback_zone)} customers")
+print()
+print(f"Total discounts given:                €{total_discount_eur:,.0f}  ({discounted_lines}/{total_lines} = {discounted_lines/total_lines:.0%} of line items)")
+print(f"  measured causal lift on repurchase: 0% (95% CI straddles zero)")
+print(f"  → at face value: €{total_discount_eur:,.0f} of revenue forgone with no detectable retention payoff in this synthetic dataset")
+```
+
 ## Headline findings — products & customers
 
-1. **Co-purchase patterns are strong and exploitable.** `dining_table → dining_chair` (~86% confidence, ~6× lift), `bed → mattress` (~70%), `kitchen_table → kitchen_chair` (~75%). These are not theoretical — they hold across hundreds of baskets each. Promoting the consequent at point-of-sale of the antecedent is essentially free revenue.
+1. **Revenue is brutally concentrated: 10 products = 73% of catalog revenue.** Of 40 distinct product names and ~€2.54 M in two-year revenue, the top 10 (`sofa`, `bed`, `mattress`, `dining_table`, `tv`, `armchair`, `coffee_table`, `dining_chair`, `wardrobe`, `sideboard`) account for €1.86 M. The remaining 30 products fight over €0.68 M. Anything you do with the top 10 will move the needle on the whole business; the rest are noise from a P&L standpoint.
 
-2. **The catalog has clear structural tiers.** k=4 clusters appear in *both* BCG and RFM analyses, and the top tiers overlap heavily — products healthy on revenue/recency are usually the same ones with high market share. Different clustering methods, same conclusion: most of the value sits in a small set of identifiable products.
+2. **Co-purchase patterns are strong and exploitable.** Top 5 simple rules by confidence: `dining_table → dining_chair` (81%, lift 4.9), `kitchen_table → kitchen_chair` (74%, lift 9.5), `bed → mattress` (69%, lift 6.1), `garden_table → garden_chair` (67%, lift 14.2), `headboard → bed` (61%, lift 7.5). Even the *misses* on these rules are quantifiable: 52 of 271 `dining_table` baskets did not include chairs — at an average chair price of €153 that's roughly **€8,000 of forgone revenue** from a single rule, on a single product.
 
-3. **Engineered temporal trends are recovered cleanly.** Articles seeded as "growing" (`led_strip`, `garden_chair`, `ottoman`) end up in the BCG growth quadrant; "declining" (`filing_cabinet`, `dvd_player`) end up with old recency in RFM. A sanity check on the methods more than a finding, but reassuring.
+3. **BCG and RFM agree on the tiers.** Products in the top BCG cluster (high share + healthy growth) overlap heavily with the top RFM cluster (recent + frequent + valuable). Different methods, same conclusion: there's a small set of structurally healthy products and a longer tail.
 
-4. **Customer value is heavily skewed.** Top 20% of returning customers account for ~50% of forecast 12-month revenue. A flat retention spend per customer is wrong by design.
+4. **The delisting candidate list is small but unambiguous.** Only 2 products live in the BCG=4 ∩ RFM=4 overlap — `dvd_player` and `filing_cabinet`, together €15,238 (0.6% of total revenue). Both seeded as declining in the synthesis. Removing them frees catalog/shelf space at near-zero opportunity cost.
 
-5. **A measurable share of customers is "still alive but quiet".** P(alive) ∈ (0.4, 0.7) for a non-trivial slice — they bought once a while ago but recent enough that the model doesn't write them off. The win-back target zone.
+5. **Engineered temporal trends are recovered cleanly.** "Growing" articles (`led_strip`, `garden_chair`, `ottoman`) land in the BCG growth quadrant; "declining" (`filing_cabinet`, `dvd_player`) end up with old recency in RFM. Sanity check rather than novel finding — but the methods passed it.
+
+6. **Customer value is even more skewed than products: top 10% of returning customers = 45% of 12-month CLV.** Of 692 customers with a repeat purchase, the top 69 (€88k forecast revenue) do as much work as the bottom 623 combined. Top 20% (138 customers) hits 66%. A flat per-customer marketing budget is approximately the *worst* allocation rule given this distribution.
+
+7. **The "still alive but quiet" win-back zone has 171 named customers.** P(alive) ∈ [0.4, 0.7] *and* at least one prior purchase. These are the customers furthest from organic re-engagement but not yet write-offs — the highest-leverage segment for a single targeted touch.
 
 ## Headline findings — time and causality
 
-6. **The comeback rate has a sharp shape.** Survival analysis on time-to-second-purchase: by day 90, 81% of first-time buyers haven't returned; by day 180, 74%; by day 365, 68%. The curve flattens around 365 days — most one-time buyers stay one-time, and what doesn't come back in a year almost certainly won't.
+8. **The comeback rate flattens between months 6 and 12.** Survival on time-to-second-purchase: S(90 days)=81%, S(180)=74%, S(365)=68%. Translation: of every 100 first-time buyers, ~32 will eventually come back, and most of that 32 returns within the first 12 months. After day 365 the curve is essentially flat — anyone still silent at year-end is gone for accounting purposes.
 
-7. **First-basket characteristics don't predict comeback timing.** Cox PH on basket value, item count, discount usage, and dominant category produces no statistically significant hazard ratios on this dataset. The honest read: retention drivers are *not* in the first-purchase mix here. In real data with structural effects, this is where targeting gets its information.
+9. **First-basket characteristics don't predict comeback timing on this data.** Cox PH on basket value, item count, discount usage, and dominant category — zero statistically significant hazard ratios. Real retention drivers live elsewhere (cohort, channel, lifecycle stage) and require those features in the pipeline. With our data we can score *when*, not *who*.
 
-8. **Naive baselines beat fancy forecasting models on a 24-month series.** Per-category monthly revenue forecasts: seasonal-naive often beats SARIMA / ETS, naive (last value) sometimes beats both. With more history (3+ years) the picture flips, but on this scale: don't pay for sophistication you can't afford.
+10. **Naive baselines beat fancy forecasting models on a 24-month series.** Seasonal-naive often beats SARIMA / ETS; naive (last value) sometimes beats both. The "boring baselines win" finding is not a bug in our pipeline — it's the M-competition finding repeated for 40 years. With 24 months of data, *don't buy methodological complexity you can't pay for in observations*.
 
-9. **Embeddings recover the catalog category structure without seeing the labels.** PPMI × SVD on basket co-occurrence places `bed`-`mattress`-`nightstand` near each other, garden items together, dining items together — the t-SNE cluster pattern matches `product_group` despite the model never seeing it. Confirms that the co-purchase structure encodes real product semantics, not just frequency artifacts.
+11. **Embeddings recover the catalog category structure without seeing the labels.** PPMI × SVD on basket co-occurrence places `bed`-`mattress`-`nightstand` near each other, dining items together, garden items together — t-SNE clusters match `product_group` despite the embedding never seeing those labels. The substitution table is the deployable artifact: per product, top-3 nearest neighbors as out-of-stock alternatives.
 
-10. **No detectable causal effect of first-purchase discounts on repeat-purchase rate.** Naive ATE bootstraps to a confidence interval straddling zero; T- and S-learner CATE distributions both center on zero. The injection sanity check confirms the technique would catch a real effect if there were one. *In our synthetic data, discounts are random — so this null result is the truth.* In real retail with targeted discounts (and resulting confounding), the same machinery requires propensity weighting before the conclusion holds.
+12. **€43,171 of discounts produced zero detectable lift on repeat-purchase rate.** 15% of line items got a discount, totaling €43k of revenue forgone. Naive ATE: 95% CI for the repurchase-rate difference straddles zero. Two meta-learners (T, S) agree. *On this synthetic data with random discount assignment, the null is the truth*; in production with targeted discounts the same null could mask real heterogeneous effects under confounding.
 
 ## Recommendations
 
-**Product side:**
+Each recommendation below is structured the same way: **what to do**, **on whom (with size)**, **expected impact**, **metric to track**.
 
-- **Bundle and cross-sell on the strongest co-purchase pairs.** Train salespeople / configure the website to never show `dining_table` without surfacing `dining_chair`.
-- **Place top-tier products (BCG=1 ∩ RFM=1) in highest-traffic positions.** Don't dilute prime placement.
-- **Delist the BCG=4 ∩ RFM=4 overlap.** Repeated low share, declining trend, infrequent recent sales — these are tying up shelf space.
-- **Use embedding-based substitution at out-of-stock events** instead of generic alternatives. The substitution table from chapter 08 transfers directly to a "try these instead" UI panel.
-- **Plan inventory with seasonal-naive baselines + uncertainty bands** rather than chasing point forecasts from heavier models that don't actually outperform on this scale.
+### Product side
 
-**Customer side:**
+| Action | Target | Expected impact | Track |
+|---|---|---|---|
+| **Force "+ chairs" prompt at any `dining_table` page-view / POS scan.** Equivalent for `bed → mattress`, `kitchen_table → kitchen_chair`, `garden_table → garden_chair`. | The 5 strongest co-purchase pairs, each fires ~250–340 times/24mo | ~€8k recoverable on `dining_table → dining_chair` alone (52 missed baskets × €153). Across the top 5 pairs realistically **€20–35k / 24mo** at modest conversion uplift on the misses | conversion rate of antecedent baskets that include the consequent (currently 67–81% across top pairs) |
+| **Concentrate prime placement on the BCG=1 ∩ RFM=1 overlap** (the structurally healthy core — sofa, bed, dining_table family) | ~10 products responsible for **73% of revenue** | Reallocating shelf/landing-page space *to* the 10 already-performing products from the long tail of 30 | revenue share of top-10 — currently 73%, target 75–78% |
+| **Delist `dvd_player` and `filing_cabinet`.** Both BCG=4 *and* RFM=4. | 2 products, €15k / 24mo (0.6% of revenue) | Frees inventory + catalog space at minimal revenue cost. Replace with adjacent SKUs in `ELEC` and `OFFI` informed by chapter 08 substitution table | revenue impact ≤ -1% over the next 6 months (anything more = wrong call) |
+| **Wire the chapter 08 embedding similarity table into the "out of stock" UI**. When `sofa-harmony` is OOS, the system suggests `armchair`, `coffee_table`, `rug` (top-3 cosine neighbors) instead of generic "more from category". | Every OOS event on website / POS | Recovered conversions on stockouts; eliminates "we don't have what you want" dead-ends | OOS-bounce rate, OOS-conversion rate |
+| **Use seasonal-naive baselines for category inventory planning** with explicit prediction intervals — not point forecasts from SARIMA/ETS. | All 10 product groups, monthly | Honest uncertainty bands prevent overstocking on a single forecast number; SARIMA's MAPE on this 24mo series is *worse* than naive on multiple categories | next-period MAE per category, year-over-year |
 
-- **Triage retention spend by predicted 12-month CLV.** A decile cut is a defensible budget allocation rule.
-- **Time retention triggers to the survival curve, not gut feel.** Day 1–90: do nothing automated. Day 90–180: soft re-engage. Day 180–365: targeted offer. Day 365+: heavy reactivation or accept the loss.
-- **Combine P(alive) ∈ (0.4, 0.7) with prior purchase volume** for the win-back target list — high recall, manageable cost.
-- **Don't claim discounts caused repeat purchases without an RCT or a doubly-robust observational analysis.** For the dataset here the naive comparison is valid because treatment is random; in production it almost never is.
+### Customer side
+
+| Action | Target | Expected impact | Track |
+|---|---|---|---|
+| **Tier marketing budget by 12-month CLV decile.** Top decile gets the personal-touch budget; bottom 5 deciles get cheap automated. | 692 returning customers, top 10% = 69 of them = €88k CLV | If marketing budget is currently flat per customer at €X, reallocating to a CLV-weighted distribution captures the same retention rate at materially lower cost (or higher retention at same cost) | retention rate × CLV decile, before/after the change |
+| **Win-back trigger sequence at 90 / 180 / 365 days post-last-purchase.** No automation before day 90. Soft email at day 90. Targeted offer at day 180. Reactivation campaign at day 365. After that: stop. | 171 customers currently in the P(alive) ∈ [0.4, 0.7] win-back zone (refresh weekly) | Survival curve says ~32% of first-time buyers will eventually return; the right-timed prompt converts a fraction of the boundary cases who would otherwise drift to zero | second-purchase rate by trigger window; cost per re-activated customer |
+| **Personalize cross-sell email with embedding-based product suggestions** rather than generic "you may also like". For a customer whose last purchase was `bed`, surface `mattress` / `nightstand` / `headboard`. | Every active customer, on each post-purchase touch | Higher email click-through; more revenue per email send | post-email basket rate, EUR per recipient |
+| **Stop the random-discount program until you can A/B-test it.** €43k spent over 24 months with zero measurable lift. | All discount-eligible touchpoints | If a real RCT shows the same null in production, that's €43k / 24mo back. If it shows positive lift in a specific segment, target only that segment. Either way, the current "spray everyone" policy is indefensible | A/B-tested ATE on repeat-purchase rate at the customer level |
+| **Always pair causal claims about marketing with the assumption ledger.** Random assignment + meta-learners is enough; observational data needs propensity weighting + DR-learner / Double ML / honest "we cannot conclude" | Any future "did campaign X work?" analysis | Decisions made on biased estimates are worse than no decisions; this is the discipline that prevents that | n/a — this is a process change |
+
+### Quick-win prioritization
+
+If forced to pick a single 90-day initiative ordered by impact-to-effort:
+
+1. **Force the chair prompt** on dining/bed/kitchen flows. Days, not weeks of work; ~€8k/24mo on one rule alone, ~€25k+ across all five rules.
+2. **Audit the discount program** with a real A/B test or a proper observational analysis. €43k of marketing spend deserves an answer better than "the model says we don't know".
+3. **CLV-weighted marketing tiering** — replaces a flat allocation rule with an evidence-based one; immediate fewer-wasted-EUR effect.
+4. **Wire the embedding substitution table** for OOS recovery. Easy engineering, hard-to-measure but consistent uplift.
+5. **Delist `dvd_player` + `filing_cabinet`**. Trivial decision, almost no downside.
 
 ## What this chapter is *not*
 
-It is a synthesis, not a model. The numbers above all come from the upstream chapters' methods; this is how a stakeholder report consumes them. For "what should I do tomorrow morning", this is the right level. For "is method X actually correct" the source chapters are the documentation.
+It is a synthesis, not a model. The numbers above all come from the upstream chapters' methods; this is how a stakeholder report consumes them. For "what should I do tomorrow morning", this is the right level. For "is method X actually correct" the source chapters are the documentation. EUR estimates are first-order back-of-envelope sizings — directionally right, not budget-grade.
