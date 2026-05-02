@@ -1,6 +1,9 @@
 project:
   type: website
   output-dir: _site
+  render:
+    - "*.qmd"
+    - "notebooks/*.ipynb"
 
 website:
   title: "Retail Customer & Basket Analysis"
