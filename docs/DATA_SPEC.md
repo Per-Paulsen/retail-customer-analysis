@@ -78,7 +78,7 @@ The historical raw file uses these columns. `scripts/preprocess_real_data.py` no
 | `Nachname` | `customer_id` | PII — hashed (md5 → deterministic 5-digit ID) |
 | `Menge` | `quantity` | |
 | `Artikelnummer` | `article_id` | |
-| `Artikel_Bezeichnung` | `article_name` | Kept raw on the real path (no normalization yet — see family-mapping followup) |
+| `Artikel_Bezeichnung` | `article_name` | Normalised to the synth family vocabulary (`bed`, `sofa`, `dining_table`, …) via `FAMILY_PATTERNS`. The raw 2,200 German Artikelbezeichnungen collapse to ~50 families; ~85% of rows match a pattern, the rest land with `article_name=""`. |
 | `Model_Bezeichnung` | `model` | First token only |
 | `Brutto_VKP` | `gross_price` | |
 | `Netto_VKP` | `net_price` | |
@@ -98,7 +98,9 @@ The historical raw file uses these columns. `scripts/preprocess_real_data.py` no
 - Rows with `Warengruppe` codes `50` (Gutschrift) or `70` (Transportkosten) — accounting line items, not product sales (mapped to `department="Other"` then dropped).
 - Rows with missing/empty `date` or `article_name`.
 
-**Known gap:** rows where `Warengruppe` is missing *and* the `article_name` doesn't match any `NAME_DEPARTMENT_PATTERNS` entry land with `department=""` and `product_group=""`. These remain in the dataset (typically a few percent of the real data) and surface as a residual category in department-level aggregations.
+**Known gaps** (real-data path):
+- Rows where `Warengruppe` is missing *and* the `article_name` doesn't match any `NAME_DEPARTMENT_PATTERNS` entry land with `department=""` and `product_group=""`. These remain in the dataset (~5% of rows) and surface as a residual category in department-level aggregations.
+- Rows whose raw German Artikelbezeichnung doesn't match any `FAMILY_PATTERNS` entry land with `article_name=""` (~15% of rows). These remain in the dataset; chapters that group on `article_name` either filter them or treat them as their own bucket.
 
 ## Synthetic dataset design
 

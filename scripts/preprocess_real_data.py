@@ -132,6 +132,183 @@ ACCESSORY_PATTERNS = [
     r"\bansteckplatte\b", r"\bauszug\b",
 ]
 
+# Family-level normalization for the real-data path. The synthetic dataset
+# already groups variants under ~40 family names (bed, sofa, dining_table, ...);
+# the real source has ~2,200 raw German Artikelbezeichnungen, many of which
+# are slight variants of the same family ("Sofa 2-Sitzer", "2er Sofa",
+# "2,5-Sitzer Sofa", ...). This pattern list collapses raw names onto a
+# small family vocabulary so chapters that group by article_name (01, 02,
+# 03, 05, dashboard) get comparable behaviour across data sources.
+#
+# Order matters: more-specific patterns must come before more-general ones
+# (e.g. schlafsofa before sofa, doppelbett before bett, esstisch before tisch).
+# An empty match returns family="" — chapters can choose to filter or keep.
+FAMILY_PATTERNS: list[tuple[str, str]] = [
+    # bed sub-types — must come before \bbett\b
+    (r"\bschlafsofa\b", "sofa_bed"),
+    (r"\bdoppelbett\b", "bed"),
+    (r"\bsystembett\b", "bed"),
+    (r"\bbalkenbett\b", "bed"),
+    (r"\bschubkastenbett\b", "bed"),
+    (r"\bkinderbett\b", "bed"),
+    (r"\beinzelbett\b", "bed"),
+    (r"\bhochbett\b", "bed"),
+    (r"\bmittelhochbett\b", "bed"),
+    (r"\bboxspringbett\b", "bed"),
+    (r"\bcomfortbett\b", "bed"),
+    (r"\bbettrahmen\b", "bed"),
+    (r"\bbettgestell\b", "bed"),
+    (r"\bbett\b", "bed"),
+
+    # bed accessories
+    (r"\bschaummatratze\b", "mattress"),
+    (r"\bmatratze\b", "mattress"),
+    (r"\blattenrost\b", "slatted_frame"),
+    (r"\bkopfteil\b", "headboard"),
+    (r"\bkopfstuetze\b", "headrest"),
+    (r"\barmlehnkissen\b", "pillow"),
+    (r"\barmlehnenkissen\b", "pillow"),
+    (r"\bnierenkissen\b", "pillow"),
+    (r"\bklemmkissen\b", "pillow"),
+    (r"\bnachttisch\b", "nightstand"),
+    (r"\bnachtkommode\b", "nightstand"),
+    (r"\bnachtkonsole\b", "nightstand"),
+    (r"\bnako\b", "nightstand"),  # abbreviation for Nachtkommode
+    (r"\bkissen\b", "pillow"),
+    (r"\bbettwaesche\b", "bedding"),
+
+    # storage / cabinets — specific schrank-types before generic schrank
+    (r"\bkleiderschrank\b", "wardrobe"),
+    (r"\bschuhschrank\b", "shoe_cabinet"),
+    (r"\baktenschrank\b", "filing_cabinet"),
+    (r"\bschiebetuerenschrank\b", "wardrobe"),
+    (r"\bschwebetuerenschrank\b", "wardrobe"),
+    (r"\bmediaschrank\b", "cabinet"),
+    (r"\bvitrinenschrank\b", "display_cabinet"),
+    (r"\bmultivitrine\b", "display_cabinet"),
+    (r"\bglasvitrine\b", "display_cabinet"),
+    (r"\bvitrine\b", "display_cabinet"),
+    (r"\bvertiko\b", "cabinet"),
+    (r"\bbuffetschrank\b", "display_cabinet"),
+    (r"\bbuffet\b", "display_cabinet"),
+    (r"\bfernsehkommode\b", "lowboard"),
+    (r"\btv.?board\b", "lowboard"),
+    (r"\btv.?longboard\b", "lowboard"),
+    (r"\btv.?kommode\b", "lowboard"),
+    (r"\btv.?schrank\b", "lowboard"),
+    (r"\bhighboard\b", "highboard"),
+    (r"\blowboard\b", "lowboard"),
+    (r"\bsideboard\b", "sideboard"),
+    (r"\banrichte\b", "sideboard"),
+    (r"\bbuecherregal\b", "bookshelf"),
+    (r"\bwandboard\b", "wall_shelf"),
+    (r"\bwandregal\b", "wall_shelf"),
+    (r"\bhaengekiste\b", "wall_shelf"),
+    (r"\bhutablage\b", "wall_shelf"),
+    (r"\bweinregal\b", "shelf"),
+    (r"\banbauwand\b", "wall_unit"),
+    (r"\bwohnwand\b", "wall_unit"),
+    (r"\bwuerfelsystem\b", "shelf"),
+    (r"\bwuerfel\b", "shelf"),
+    (r"\bregal\b", "shelf"),
+    (r"\bkommode\b", "dresser"),
+    (r"\bschrank\b", "cabinet"),
+
+    # tables — specific types before generic tisch
+    (r"\besstisch\b", "dining_table"),
+    (r"\bcouchtisch\b", "coffee_table"),
+    (r"\bsalontisch\b", "coffee_table"),
+    (r"\bkuechentisch\b", "kitchen_table"),
+    (r"\bbeistelltisch\b", "side_table"),
+    (r"\bschreibtisch\b", "desk"),
+    (r"\bsekretaer\b", "desk"),
+    (r"\bgartentisch\b", "garden_table"),
+    (r"\bbaumtisch\b", "dining_table"),
+    (r"\bkonsolentisch\b", "side_table"),
+    (r"\becktisch\b", "table"),
+    (r"\btisch\b", "table"),
+
+    # chairs / seating — specific types before generic stuhl/hocker/bank
+    (r"\bbarhocker\b", "bar_stool"),
+    (r"\bkuechenstuhl\b", "kitchen_chair"),
+    (r"\bbuerostuhl\b", "office_chair"),
+    (r"\bgartenstuhl\b", "garden_chair"),
+    (r"\bfreischwinger\b", "dining_chair"),
+    (r"\bschwingstuhl\b", "dining_chair"),
+    (r"\bschwinger\b", "dining_chair"),
+    (r"\bstuhl\b", "dining_chair"),
+    (r"\beckbank\b", "bench"),
+    (r"\bschuhbank\b", "bench"),
+    (r"\bbank\b", "bench"),
+    (r"\bhocker\b", "stool"),
+
+    # upholstered furniture — must come after schlafsofa; specific corner
+    # variants before generic sofa
+    (r"\becksofa\b", "corner_sofa"),
+    (r"\bpolsterecke\b", "corner_sofa"),
+    (r"\beckgarnitur\b", "corner_sofa"),
+    (r"\bohrenbackensessel\b", "armchair"),
+    (r"\bohrensessel\b", "armchair"),
+    (r"\bsolitaersessel\b", "armchair"),
+    (r"\bruhesessel\b", "armchair"),
+    (r"\bsofa\b", "sofa"),
+    (r"\bsessel\b", "armchair"),
+    (r"\bsitzer\b", "sofa"),  # "2-Sitzer", "3-Sitzer" — almost always sofa
+    (r"\bgarnitur\b", "sofa"),
+    (r"\bpolster\b", "sofa"),
+
+    # outdoor — specifics before generic
+    (r"\bsonnenschirm\b", "parasol"),
+    (r"\bgartenliege\b", "garden_lounger"),
+    (r"\beinzelliege\b", "lounger"),
+    (r"\bliege\b", "lounger"),
+    (r"\bgarten\b", "outdoor_misc"),
+
+    # decor / soft goods
+    (r"\bteppich\b", "rug"),
+    (r"\bspiegel\b", "mirror"),
+    (r"\bgardine\b", "curtain"),
+    (r"\bvorhang\b", "curtain"),
+    (r"\bbild\b", "picture"),
+    (r"\bfotodruck\b", "picture"),
+    (r"\bkunstwerk\b", "artwork"),
+
+    # lighting — specific lamp types before generic lampe/leuchte/led
+    (r"\bstehlampe\b", "floor_lamp"),
+    (r"\bstehleuchte\b", "floor_lamp"),
+    (r"\bhaengelampe\b", "pendant_lamp"),
+    (r"\bhaengeleuchte\b", "pendant_lamp"),
+    (r"\bdeckenlampe\b", "ceiling_lamp"),
+    (r"\bdeckenleuchte\b", "ceiling_lamp"),
+    (r"\btischlampe\b", "table_lamp"),
+    (r"\btischleuchte\b", "table_lamp"),
+    (r"\bbeleuchtungsset\b", "lighting"),
+    (r"\bbeleuchtung\b", "lighting"),
+    (r"\bleuchte\b", "lamp"),
+    (r"\blampe\b", "lamp"),
+    (r"\bled\b", "lighting"),
+
+    # accessories / non-product line items that survive earlier filters
+    (r"\bansteckplatte\b", "table_extension"),
+    (r"\baufpreis\b", "accessory"),
+    (r"\bnachbestellung\b", "accessory"),
+    (r"\bersatzteil\b", "accessory"),
+    (r"\bersatz\b", "accessory"),
+    (r"\bzubehoer\b", "accessory"),
+    (r"\bauszug\b", "accessory"),
+    (r"\bablage\b", "accessory"),
+    (r"\bschubkasten\b", "accessory"),
+    (r"\bschublade\b", "accessory"),
+    (r"\beinlegeboden\b", "accessory"),
+    (r"\bhakenleiste\b", "accessory"),
+    (r"\brollcontainer\b", "accessory"),
+    (r"\bfussteil\b", "accessory"),
+    (r"\bschubladenmodul\b", "accessory"),
+    (r"\bpanel\b", "accessory"),
+    (r"\braumteiler\b", "accessory"),
+    (r"\bfundgrube\b", "misc"),
+]
+
 
 def _strip_accents(s: str) -> str:
     """German diacritic stripping: ä→ae, ö→oe, ü→ue, ß→ss."""
@@ -188,6 +365,15 @@ def _derive_bundle_group(article_name: str) -> str:
     for pattern, bundle in BUNDLE_PATTERNS:
         if re.search(pattern, name):
             return bundle
+    return ""
+
+
+def _derive_family(article_name: str) -> str:
+    """Map a raw German Artikelbezeichnung onto the synthetic family vocabulary."""
+    name = _strip_accents(article_name)
+    for pattern, family in FAMILY_PATTERNS:
+        if re.search(pattern, name):
+            return family
     return ""
 
 
@@ -269,10 +455,15 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
     out["transaction_id"] = "T" + raw["_kv"].astype(str).str.replace(".", "_", regex=False)
     out["line_item"]      = pd.to_numeric(raw["_pos"], errors="coerce").fillna(0).astype(int)
 
-    # Article info — keep real names + models
-    out["article_id"]   = raw["_artnr"].astype(str).str.strip().str.rstrip(".")
-    out["article_name"] = raw["_artbez"].astype(str).str.strip()
-    out["model"]        = raw["_model"].fillna("").astype(str).str.strip()
+    # Article info — keep models + SKU IDs as-is. article_name is normalised
+    # to the synth family vocabulary further down so all chapters that group
+    # by article_name get a comparable level of granularity across data
+    # sources. The raw German Artikelbezeichnung is held in a temporary
+    # _raw_name column for internal pattern matches (bundle / department /
+    # family) and dropped at the schema-reorder step.
+    out["article_id"] = raw["_artnr"].astype(str).str.strip().str.rstrip(".")
+    out["model"]      = raw["_model"].fillna("").astype(str).str.strip()
+    out["_raw_name"]  = raw["_artbez"].astype(str).str.strip()
 
     # Numeric fields
     out["quantity"]    = pd.to_numeric(raw["_menge"],   errors="coerce").fillna(1).astype(int)
@@ -291,12 +482,14 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
     wg_code = parsed.apply(lambda t: t[0])
     out["product_group"] = wg_code.str[:2].map(PRODUCT_GROUP_MAP).fillna("")
     out["department"] = pd.Series(
-        [_derive_department(c, n) for c, n in zip(wg_code, out["article_name"])],
+        [_derive_department(c, n) for c, n in zip(wg_code, out["_raw_name"])],
         index=out.index,
     )
 
-    # Bundle membership (derived from article_name)
-    out["bundle_group"] = out["article_name"].apply(_derive_bundle_group)
+    # Bundle membership and family — derived from the raw German name. The
+    # bundle column survives, article_name takes the family value.
+    out["bundle_group"] = out["_raw_name"].apply(_derive_bundle_group)
+    out["article_name"] = out["_raw_name"].apply(_derive_family)
 
     out["supplier_id"] = raw["_lieferant"].fillna("").astype(str).str.strip()
 
@@ -317,15 +510,18 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
         np.where(out["discount_type"] == 2, raw["_grund_ges"].fillna("").astype(str).str[:1], "")
     )
 
-    # Drop rows with no usable date or article (strict: NaN, empty, "nan" string),
-    # plus accounting-only line items (Gutschrift, Transportkosten — department
-    # "Other") that don't represent product sales and aren't in the synth schema.
+    # Drop rows with no usable date or raw article name (strict: NaN, empty,
+    # "nan" string), plus accounting-only line items (Gutschrift,
+    # Transportkosten — department "Other") that don't represent product
+    # sales and aren't in the synth schema. Filter against _raw_name, not
+    # the family-mapped article_name, so unrecognised raw names (which map
+    # to article_name="") are kept rather than silently dropped.
     before = len(out)
     out = out[
         out["date"].notna()
-        & out["article_name"].notna()
-        & (out["article_name"].astype(str).str.strip() != "")
-        & (out["article_name"].astype(str).str.lower() != "nan")
+        & out["_raw_name"].notna()
+        & (out["_raw_name"].astype(str).str.strip() != "")
+        & (out["_raw_name"].astype(str).str.lower() != "nan")
         & (out["department"] != "Other")
     ].copy()
     if len(out) < before:
@@ -337,7 +533,12 @@ def preprocess(source: Path, output: Path) -> pd.DataFrame:
     for col in ("gross_price", "net_price", "net_cost", "discount_amount", "discount_percentage"):
         out[col] = out[col].round(4 if "percentage" in col else 2)
 
-    out = out[SCHEMA_ORDER]
+    # Coverage of the family mapping — useful signal for future pattern tuning
+    family_coverage = (out["article_name"] != "").mean()
+    n_families = out.loc[out["article_name"] != "", "article_name"].nunique()
+    print(f"  family-mapping coverage: {family_coverage:.1%} of rows ({n_families} unique families)")
+
+    out = out[SCHEMA_ORDER]  # implicitly drops _raw_name
 
     output.parent.mkdir(parents=True, exist_ok=True)
     out.to_csv(output, sep=";", index=False)
