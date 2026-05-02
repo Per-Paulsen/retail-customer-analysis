@@ -6,6 +6,7 @@ End-to-end customer and product analytics on a synthetic retail transaction data
 
 ## Chapters
 
+0. [Data Audit](00-data-audit.qmd) — catalog hygiene, bundle tagging, and triage framework that runs before any analysis.
 1. [Association Rules](01-association.qmd) — market basket analysis with `arules` (R) and `mlxtend` (Python), side by side.
 2. [BCG-style Clustering](02-cluster-2d-bcg.qmd) — products positioned by market share × growth (Python / scikit-learn).
 3. [RFM Clustering](03-cluster-3d-rfm.qmd) — articles segmented by Recency, Frequency, Monetary value (R / kmeans + interactive 3D with plotly).

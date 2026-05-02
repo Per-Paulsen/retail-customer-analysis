@@ -8,6 +8,8 @@ website:
     left:
       - href: index.qmd
         text: Home
+      - href: 00-data-audit.qmd
+        text: Data Audit
       - text: Analyses
         menu:
           - href: 01-association.qmd

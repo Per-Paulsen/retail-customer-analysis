@@ -35,6 +35,18 @@ LIFETIME_DAYS_MEAN = 250
 TX_RATE_GAMMA_SHAPE = 2.0
 TX_RATE_GAMMA_SCALE = 0.5  # mean rate = shape * scale = 1.0 transactions / year
 
+# Bundle groups: items that are functional components of the same product
+# system. The "bed → mattress" association rule is plumbing, not insight —
+# you can't have a bed without a mattress. Tagging these explicitly lets
+# downstream analyses filter or annotate definitional co-purchases.
+BUNDLE_GROUPS: dict[str, str] = {
+    **{n: "bed_system"     for n in ("bed", "mattress", "headboard", "nightstand")},
+    **{n: "dining_system"  for n in ("dining_table", "dining_chair", "table_extension", "sideboard")},
+    **{n: "kitchen_system" for n in ("kitchen_table", "kitchen_chair", "bar_stool")},
+    **{n: "office_system"  for n in ("desk", "office_chair", "bookshelf", "filing_cabinet")},
+    **{n: "garden_system"  for n in ("garden_chair", "garden_table", "parasol")},
+}
+
 OUTPUT_PATH = (
     Path(__file__).resolve().parent.parent
     / "data"
@@ -339,6 +351,7 @@ def generate_dataset() -> pd.DataFrame:
                         "net_cost": round(cost, 2),
                         "date": tx_date.isoformat(),
                         "product_group": item.product_group,
+                        "bundle_group": BUNDLE_GROUPS.get(item.article_name, ""),
                         "supplier_id": item.supplier_id,
                         "discount_type": discount_type,
                         "discount_amount": round(discount_amount, 2),

@@ -20,6 +20,7 @@ The synthetic dataset and the cleaned version of the real dataset share this sch
 | `net_cost` | float | Purchase cost per unit (for the retailer) |
 | `date` | date (YYYY-MM-DD) | Transaction date |
 | `product_group` | string | 4-character category code (e.g. `DINI`, `LIVI`) |
+| `bundle_group` | string | Functional product-system membership (e.g. `bed_system`, `dining_system`) — empty for standalone items. Used by the [data audit](../00-data-audit.qmd) chapter to flag definitional co-purchases. |
 | `supplier_id` | string | Supplier identifier |
 | `discount_type` | int | `0` = none, `1` = line-level, `2` = order-level |
 | `discount_amount` | float | Absolute discount applied to this line |

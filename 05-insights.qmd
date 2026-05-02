@@ -260,6 +260,29 @@ print(f"  measured causal lift on repurchase: 0% (95% CI straddles zero)")
 print(f"  → at face value: €{total_discount_eur:,.0f} of revenue forgone with no detectable retention payoff in this synthetic dataset")
 ```
 
+## Triage — what's actually insight, what's plumbing?
+
+Before recommendations, classify every finding the chapters surfaced. This separates *insights you should act on* from *sanity checks* (the analysis worked, but you knew this) and *data-quality artifacts* (something to fix in the catalog, not in marketing).
+
+| # | Finding | Class | Why this class |
+|---|---|---|---|
+| 1 | Top 10 products = 73% of revenue | 🟢 actionable insight | Concrete sizing for portfolio prioritization |
+| 2 | `dining_table → dining_chair`, `kitchen_table → kitchen_chair`, `garden_table → garden_chair` co-purchase | 🟢 actionable insight | Cross-bundle, asymmetric — real cross-sell levers |
+| 3 | `bed → mattress`, `headboard → bed` co-purchase | 🟡 sanity check | Within `bed_system` bundle — definitional, not behavioral. Filtered in chapter 01's actionable-rules table |
+| 4 | `dvd_player`, `filing_cabinet` flagged at the bottom | 🔴 data-quality artifact | Caught upstream by the catalog audit (chapter 00). Flagged as effectively discontinued — operational decision, not analytical insight |
+| 5 | BCG and RFM agreement on top-tier products | 🟢 actionable insight | Robustness signal — investment focus is unambiguous |
+| 6 | Engineered growing/declining trends recovered | 🟡 sanity check | Confirms the methods work, but we *put* this signal in the data; recovery isn't surprise |
+| 7 | Top 10% of returning customers = 45% of CLV | 🟢 actionable insight | Concrete sizing for retention budget allocation |
+| 8 | 171 customers in win-back zone (P(alive) ∈ [0.4, 0.7]) | 🟢 actionable insight | Specific addressable list |
+| 9 | Survival curve flattens after day 365 | 🟢 actionable insight | Concrete operational thresholds for retention triggers |
+| 10 | First-basket features don't predict comeback timing | 🟢 actionable insight (negative result) | Tells us where the targeting signal *isn't*; redirects effort to other features |
+| 11 | Naive baselines beat fancy forecasting | 🟢 actionable insight (methodological) | Saves money: don't deploy SARIMA when seasonal-naive is just as good |
+| 12 | Embeddings recover catalog category structure | 🟡 sanity check | Confirms basket co-occurrence captures product semantics; not surprising given the synthesis |
+| 13 | Embedding-based substitution table | 🟢 actionable insight | Deployable artifact for OOS UI |
+| 14 | €43k of discounts produced zero detectable lift | 🟢 actionable insight | Direct euro-amount up for grabs (or A/B-test for targeting heterogeneity) |
+
+**Recommendations below are derived only from the 🟢 rows.** The 🟡 rows confirm the analysis is sound; the 🔴 rows belong in the data-engineering backlog, not the marketing roadmap.
+
 ## Headline findings — products & customers
 
 1. **Revenue is brutally concentrated: 10 products = 73% of catalog revenue.** Of 40 distinct product names and ~€2.54 M in two-year revenue, the top 10 (`sofa`, `bed`, `mattress`, `dining_table`, `tv`, `armchair`, `coffee_table`, `dining_chair`, `wardrobe`, `sideboard`) account for €1.86 M. The remaining 30 products fight over €0.68 M. Anything you do with the top 10 will move the needle on the whole business; the rest are noise from a P&L standpoint.

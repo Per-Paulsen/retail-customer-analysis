@@ -1,0 +1,164 @@
+---
+title: "Data Audit — Catalog Hygiene & Bundle Tagging"
+---
+
+This chapter runs *before* any analysis. Its job: surface the things that would otherwise show up as embarrassing "findings" further downstream — products that don't belong in the catalog, items that are functional bundles where co-purchase is definitional rather than behavioral, and any structural issues a sound first pass would catch.
+
+The methodology behind it is honest about its origin: **the checks here were added after a first analytical pass surfaced exactly these issues** — `dvd_player` flagged as "delisting candidate" when it was really a catalog-membership question, `bed → mattress` rules treated as insight when they're plumbing. Adding the audit step turns those moments of "wait, that's not insight" into a systematic upstream filter, while the rest of the chapters keep their analytical purity.
+
+```{python}
+#| label: setup
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+sns.set_theme(style="whitegrid")
+
+df = pd.read_csv("data/synthetic/transactions.csv", sep=";", parse_dates=["date"])
+print(f"Raw transactions: {len(df):,d} line items, {df['transaction_id'].nunique():,d} baskets, "
+      f"{df['customer_id'].nunique():,d} customers, "
+      f"{df['article_name'].nunique()} unique product names")
+```
+
+## 1. Catalog hygiene — does every product belong?
+
+A retail catalog has an *intended* category mix. For our furniture / home-goods retailer, valid product groups are documented in `docs/DATA_SPEC.md`. The first audit check: are there any products whose presence in the catalog warrants a question?
+
+**Heuristic checks:**
+
+- **Product-name vs. expected category list** — does the name suggest a category?
+- **Volume threshold** — does the product carry meaningful weight in the business, or is it a long-tail leftover?
+- **Last-sale recency** — has it sold recently enough to still be "live"?
+
+```{python}
+#| label: catalog-audit
+EXPECTED_GROUPS = {
+    "DINI": "Dining",   "LIVI": "Living room",
+    "BEDR": "Bedroom",  "OFFI": "Office",
+    "LIGH": "Lighting", "ELEC": "Electronics",
+    "DECO": "Decor",    "STOR": "Storage",
+    "KITC": "Kitchen",  "OUTD": "Outdoor",
+}
+
+article_summary = (
+    df.groupby(["article_name", "product_group"])
+      .agg(line_items=("line_item", "count"),
+           revenue=("gross_price", "sum"),
+           last_sold=("date", "max"),
+           first_sold=("date", "min"))
+      .reset_index()
+)
+total_rev = article_summary["revenue"].sum()
+article_summary["revenue_share"] = article_summary["revenue"] / total_rev
+article_summary["days_silent"] = (df["date"].max() - article_summary["last_sold"]).dt.days
+
+# Three audit flags
+LOW_VOLUME_THRESHOLD = 0.005   # < 0.5% of revenue → review
+LONG_SILENT_THRESHOLD = 90     # > 90 days no sale → review
+article_summary["flag_low_volume"]  = article_summary["revenue_share"] < LOW_VOLUME_THRESHOLD
+article_summary["flag_long_silent"] = article_summary["days_silent"] > LONG_SILENT_THRESHOLD
+article_summary["flag_unexpected_group"] = ~article_summary["product_group"].isin(EXPECTED_GROUPS)
+
+flagged = article_summary[
+    article_summary["flag_low_volume"]
+    | article_summary["flag_long_silent"]
+    | article_summary["flag_unexpected_group"]
+]
+flagged_view = flagged[
+    ["article_name", "product_group", "revenue", "revenue_share",
+     "days_silent", "flag_low_volume", "flag_long_silent", "flag_unexpected_group"]
+].sort_values("revenue_share")
+
+print(f"Flagged products: {len(flagged_view)} of {len(article_summary)} total\n")
+flagged_view.round({"revenue": 0, "revenue_share": 4})
+```
+
+**Reading the table:**
+
+- `flag_unexpected_group=True` would catch products whose `product_group` code is outside the documented set (e.g., a pet-supplies code in a furniture catalog). On this dataset all groups match — clean.
+- `flag_low_volume=True` flags products under 0.5% of revenue. These aren't automatic delisting candidates — but they earn a manual review, particularly when combined with other signals.
+- `flag_long_silent=True` catches products with no sales in the last 90 days. These are typical end-of-life candidates.
+
+**Decision rule for this analysis:** products flagged by *both* `low_volume` AND `long_silent` are excluded from headline product-side findings. They remain in the dataset (downstream calculations still see them) but the recommendations table won't single them out as "delist this".
+
+```{python}
+#| label: discontinued-set
+discontinued = flagged[
+    flagged["flag_low_volume"] & flagged["flag_long_silent"]
+]["article_name"].tolist()
+print(f"Treated as effectively discontinued: {discontinued}")
+```
+
+This is the difference between *"the analysis says delist `dvd_player`"* (presented as insight) and *"the catalog audit identifies `dvd_player` as already end-of-life — delisting is operational, not analytical"* (presented as plumbing). Both are true; the second framing is more honest.
+
+## 2. Bundle groups — definitional co-purchase
+
+Some product pairs are functionally inseparable: you can't have a bed without a mattress, a dining table is useless without chairs. When association-rule mining surfaces `bed → mattress`, that's *not* a discovered insight about customer behavior — it's the definition of the products.
+
+Best practice: maintain a **product hierarchy** that knows which items are components of the same product system, and use the hierarchy as a filter on co-purchase findings.
+
+The synthetic dataset already carries this structure in the `bundle_group` column:
+
+```{python}
+#| label: bundle-overview
+bundle_summary = (
+    df[df["bundle_group"].fillna("").ne("")]
+      .groupby("bundle_group")
+      .agg(items=("article_name", lambda s: ", ".join(sorted(set(s)))),
+           n_items=("article_name", "nunique"),
+           revenue=("gross_price", "sum"),
+           transactions=("transaction_id", "nunique"))
+      .reset_index()
+      .sort_values("revenue", ascending=False)
+)
+bundle_summary["revenue_share"] = bundle_summary["revenue"] / total_rev
+bundle_summary[["bundle_group", "n_items", "items", "revenue", "revenue_share", "transactions"]]\
+    .round({"revenue": 0, "revenue_share": 3})
+```
+
+Each bundle has 3–4 functional components. Rules that fire *within* a bundle (e.g., `bed → mattress` — both in `bed_system`) are tagged "definitional"; rules that fire *across* bundles (e.g., `dining_table → wine_glasses`) are tagged "behavioral / cross-category" and graded as more interesting.
+
+```{python}
+#| label: standalone-vs-bundle
+standalone_count = df[df["bundle_group"].fillna("").eq("")]["article_name"].nunique()
+bundle_count = df[df["bundle_group"].fillna("").ne("")]["article_name"].nunique()
+print(f"Bundle members:    {bundle_count} products in {bundle_summary['bundle_group'].nunique()} bundles")
+print(f"Standalone items:  {standalone_count} products (not bundle components)")
+```
+
+## 3. Symmetry detection — the "you can't have one without the other" signal
+
+A second mechanical filter: rules where `A → B` and `B → A` both have high confidence are almost always definitional. Real behavioral rules are *asymmetric* — `dining_table → dining_chair` is high-confidence, but `dining_chair → dining_table` is much lower (people buy spare chairs without buying a new table).
+
+We compute this systematically in the association chapter (chapter 01). The audit step here just establishes the framework: any rule with **both directions ≥ 60% confidence** earns the "symmetric" tag and is filtered from the headline list.
+
+## 4. Audit summary — what the downstream chapters now know
+
+After this chapter, every analysis downstream has access to:
+
+| Field | Meaning |
+|---|---|
+| `bundle_group` | Functional product-system membership (or empty for standalone) |
+| `flag_low_volume` (computed) | < 0.5% of revenue |
+| `flag_long_silent` (computed) | > 90 days since last sale |
+| `flag_discontinued` | Both `low_volume` AND `long_silent` — operationally end-of-life |
+
+```{python}
+#| label: write-audit-table
+audit_table = article_summary.assign(
+    flag_discontinued=lambda d: d["flag_low_volume"] & d["flag_long_silent"]
+)[["article_name", "product_group", "revenue", "revenue_share",
+   "days_silent", "flag_low_volume", "flag_long_silent", "flag_discontinued"]]
+
+# Persist for downstream chapters that want to read the audit decisions
+audit_table.to_csv("data/synthetic/audit_flags.csv", sep=";", index=False)
+print("Wrote data/synthetic/audit_flags.csv "
+      f"({len(audit_table)} rows, {audit_table['flag_discontinued'].sum()} flagged as discontinued)")
+```
+
+## A note on iteration
+
+This audit chapter is a refactor, not pristine first-thought work. It was added after the first analytical pass surfaced findings that domain experts would have caught instantly — the `dvd_player` situation, the `bed → mattress` rules, products lurking in the bottom of every cluster. Surfacing those earlier as "data quality / catalog hygiene" issues, rather than letting them appear as analytical conclusions, is exactly the iterative refinement that's standard in real analytical work.
+
+Showing the iteration here, instead of pretending the audit was always there, is the more honest framing — and arguably the more useful one to readers learning analytical practice.

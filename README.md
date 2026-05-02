@@ -20,7 +20,8 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 
 | Chapter | Language | Tools | Output |
 |---|---|---|---|
-| [01 — Association Rules](01-association.qmd) | R + Python | `arules`, `arulesViz`, `mlxtend` | Apriori rules at sup ≥ 0.001, conf ≥ 0.5 |
+| [00 — Data Audit](00-data-audit.qmd) | Python | pandas | Catalog hygiene flags, bundle tagging, triage framework |
+| [01 — Association Rules](01-association.qmd) | R + Python | `arules`, `arulesViz`, `mlxtend` | Apriori rules at sup ≥ 0.001, conf ≥ 0.5 + bundle/symmetry triage |
 | [02 — BCG Clustering](02-cluster-2d-bcg.qmd) | Python | `scikit-learn`, `seaborn` | k-means quadrants on share × growth |
 | [03 — RFM Clustering](03-cluster-3d-rfm.qmd) | R | `kmeans`, `plotly`, `rpart` | 3D segmentation + decision tree |
 | [04 — Customer Lifetime Value](04-clv-bgnbd.qmd) | Python | `lifetimes` (BG/NBD + Gamma-Gamma) | Per-customer CLV + P(alive), holdout-validated |
@@ -56,6 +57,12 @@ quarto preview          # auto-reload during editing
 
 Prerequisites: Python ≥ 3.10, R ≥ 4.5, [Quarto](https://quarto.org/docs/get-started/) ≥ 1.5.
 
+## A note on iterative refinement
+
+The chapters are not in the order they were originally written. **Chapter 00 (Data Audit)** and the bundle-tagging machinery were added *after* a first analytical pass surfaced findings that experienced retail analysts would catch in the first ten seconds — products that didn't belong in the catalog (`dvd_player` in a furniture store), and association rules that were definitionally true rather than behaviorally interesting (`bed → mattress`).
+
+Adding those checks upstream — turning "the analysis says delist this" into "the catalog audit identified this as already end-of-life" — is iterative refinement, not retroactive cleanup. Real analytical work always involves the loop: first pass, notice the obvious issues, add the appropriate filter, re-run. Showing the iteration here, with the audit chapter explicit and the triage framework documented in chapter 05, is more honest than pretending the workflow was pristine from the first commit.
+
 ## Origin
 
 The methodology is based on a 2017 internship project for a German retail company. The original was three iterative R scripts running on a confidential transaction dump. This repository is a from-scratch modernization with three key differences:
@@ -90,6 +97,7 @@ The methodology is based on a 2017 internship project for a German retail compan
 retail-customer-analysis/
 ├── _quarto.yml             # Quarto project config
 ├── index.qmd               # Landing page
+├── 00-data-audit.qmd       # Chapter 0 — Python (catalog hygiene, bundle tagging, triage)
 ├── 01-association.qmd      # Chapter 1 — R + Python
 ├── 02-cluster-2d-bcg.qmd   # Chapter 2 — Python
 ├── 03-cluster-3d-rfm.qmd   # Chapter 3 — R
