@@ -118,6 +118,11 @@ from mlxtend.frequent_patterns import apriori, association_rules
 from pathlib import Path
 _data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
 df = pd.read_csv(_data_path, sep=";")
+# Drop rows whose article_name didn't survive the family-mapping (NaN or empty
+# string). Mixing NaN floats with string items would crash apriori's internal
+# sort with TypeError on real data.
+df = df[df["article_name"].notna() & (df["article_name"].astype(str).str.strip() != "")].copy()
+df["article_name"] = df["article_name"].astype(str).str.strip()
 baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
 
 te = TransactionEncoder()

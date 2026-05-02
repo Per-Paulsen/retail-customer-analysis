@@ -37,13 +37,25 @@ from pathlib import Path
 _data_path = "data/raw/transactions.csv" if Path("data/raw/transactions.csv").exists() else "data/synthetic/transactions.csv"
 df = pd.read_csv(_data_path, sep=";", parse_dates=["date"])
 
+# Defensive: ensure article_id / article_name / model are strings without NaN
+# so set() and string concat don't trip on real-data quirks (unmapped families
+# leave article_name="", missing models leave model="").
+df = df[df["article_id"].notna() & (df["article_id"].astype(str).str.strip() != "")].copy()
+df["article_id"]   = df["article_id"].astype(str).str.strip()
+df["article_name"] = df["article_name"].fillna("").astype(str).str.strip()
+df["model"]        = df["model"].fillna("").astype(str).str.strip()
+
 # Lookup: article_id -> human-readable "name (model)" for display
 label_lookup = (
     df.drop_duplicates("article_id")
       .assign(label=lambda d: d["article_name"] + " (" + d["model"] + ")")
       .set_index("article_id")["label"].to_dict()
 )
-group_lookup = df.drop_duplicates("article_id").set_index("article_id")["product_group"].to_dict()
+group_lookup = (
+    df.drop_duplicates("article_id")
+      .assign(product_group=lambda d: d["product_group"].fillna("").astype(str))
+      .set_index("article_id")["product_group"].to_dict()
+)
 family_lookup = df.drop_duplicates("article_id").set_index("article_id")["article_name"].to_dict()
 ```
 

@@ -102,7 +102,10 @@ rfm_articles["rank"] = rfm_articles["cluster"].map(centers_rfm["rank"])
 rfm_articles_reset = rfm_articles.reset_index().assign(rank_str=lambda d: d["rank"].astype(str))
 
 # --- Association rules ------------------------------------------------------
-baskets = df.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
+# Drop unmapped/empty article_names — mixing NaN with strings crashes apriori's sort.
+df_rules = df[df["article_name"].notna() & (df["article_name"].astype(str).str.strip() != "")].copy()
+df_rules["article_name"] = df_rules["article_name"].astype(str).str.strip()
+baskets = df_rules.groupby("transaction_id")["article_name"].apply(lambda s: list(set(s))).tolist()
 te = TransactionEncoder()
 basket_matrix = pd.DataFrame(te.fit_transform(baskets), columns=te.columns_)
 freq_items = apriori(basket_matrix, min_support=0.001, use_colnames=True)
