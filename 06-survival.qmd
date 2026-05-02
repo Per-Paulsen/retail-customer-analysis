@@ -103,7 +103,7 @@ The fact that the curve doesn't decay to zero (median survival is `∞`) reflect
 
 ## Stratification — does the first basket predict return rate?
 
-Beyond the population, we want to know if first-purchase characteristics shift the curve. Cohort by the **product group of the first basket** and compare:
+Beyond the population, we want to know if first-purchase characteristics shift the curve. Cohort by the **department of the first basket** — six store-floor sections is the right level of granularity for a covariate (more levels mean noisier coefficients, fewer mean less interpretable):
 
 ```{python}
 #| label: build-first-basket-features
@@ -116,25 +116,25 @@ first_tx_lines = df.merge(
 basket_features = first_tx_lines.groupby("customer_id").agg(
     first_basket_value=("gross_price", "sum"),
     first_n_items=("line_item", "count"),
-    first_top_group=("product_group", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
+    first_top_dept=("department", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
     first_had_discount=("discount_amount", lambda s: (s > 0).any()),
 )
 
 surv_full = surv.join(basket_features, how="left")
 surv_full["first_had_discount"] = surv_full["first_had_discount"].astype(int)
 surv_full[["duration", "event", "first_basket_value", "first_n_items",
-           "first_top_group", "first_had_discount"]].describe(include="all").round(2)
+           "first_top_dept", "first_had_discount"]].describe(include="all").round(2)
 ```
 
 ```{python}
 #| label: fig-km-by-group
-#| fig-cap: "Survival curves stratified by the first basket's dominant product group. Overlapping curves and confidence intervals = no real differences between groups."
-top_groups = surv_full["first_top_group"].value_counts().head(5).index.tolist()
+#| fig-cap: "Survival curves stratified by the first basket's dominant department. Overlapping curves and confidence intervals = no real differences between groups."
+top_groups = surv_full["first_top_dept"].value_counts().head(5).index.tolist()
 
 fig, ax = plt.subplots(figsize=(9, 5))
 palette = sns.color_palette("tab10", n_colors=len(top_groups))
 for g, c in zip(top_groups, palette):
-    mask = surv_full["first_top_group"] == g
+    mask = surv_full["first_top_dept"] == g
     n = int(mask.sum())
     KaplanMeierFitter().fit(
         surv_full.loc[mask, "duration"], surv_full.loc[mask, "event"], label=f"{g} (n={n})"
@@ -143,7 +143,7 @@ for g, c in zip(top_groups, palette):
 ax.set_xlabel("Days since first purchase")
 ax.set_ylabel("P(no second purchase yet)")
 ax.set_ylim(0.55, 1.02)
-ax.legend(title="First-basket dominant group", fontsize=9)
+ax.legend(title="First-basket dominant department", fontsize=9)
 plt.tight_layout()
 plt.show()
 ```
@@ -152,14 +152,14 @@ plt.show()
 #| label: logrank
 #| message: false
 result = multivariate_logrank_test(
-    surv_full["duration"], surv_full["first_top_group"], surv_full["event"],
+    surv_full["duration"], surv_full["first_top_dept"], surv_full["event"],
 )
-print(f"Multivariate log-rank test across product groups:")
+print(f"Multivariate log-rank test across departments:")
 print(f"  test statistic:  {result.test_statistic:.2f}")
 print(f"  p-value:         {result.p_value:.4f}")
 ```
 
-If the curves were materially different, we'd see clear separation and a small p-value. Here they sit on top of one another and the log-rank test fails to reject the null — *the first basket's category does not predict the return timing in this dataset.*
+If the curves were materially different, we'd see clear separation and a small p-value. Here they sit on top of one another and the log-rank test fails to reject the null — *the first basket's department does not predict the return timing in this dataset.*
 
 That's not a bug; it's the right answer. We engineered customer behavior to be **independent** of what they bought first (lifetime and rate are random per customer, not conditioned on basket contents). A real dataset would almost certainly show category effects — but inventing them here would be cheating.
 
@@ -171,11 +171,11 @@ A Cox PH model estimates how a *unit increase* in each covariate multiplies the 
 #| label: cox-fit
 cph_data = surv_full.dropna(subset=["first_basket_value"]).copy()
 cph_data["log_first_value"] = np.log1p(cph_data["first_basket_value"])
-cph_data = pd.get_dummies(cph_data, columns=["first_top_group"], drop_first=True, dtype=int)
+cph_data = pd.get_dummies(cph_data, columns=["first_top_dept"], drop_first=True, dtype=int)
 
 feature_cols = (
     ["log_first_value", "first_n_items", "first_had_discount"]
-    + [c for c in cph_data.columns if c.startswith("first_top_group_")]
+    + [c for c in cph_data.columns if c.startswith("first_top_dept_")]
 )
 cph_input = cph_data[["duration", "event"] + feature_cols].dropna()
 

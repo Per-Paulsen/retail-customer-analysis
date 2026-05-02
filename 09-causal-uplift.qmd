@@ -55,7 +55,7 @@ basket = first_tx_lines.groupby("customer_id").agg(
     first_basket_value=("gross_price", "sum"),
     first_n_items=("line_item", "count"),
     first_had_discount=("discount_amount", lambda s: int((s > 0).any())),
-    first_top_group=("product_group", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
+    first_top_dept=("department", lambda s: s.mode().iloc[0] if not s.mode().empty else ""),
 )
 
 data = first_tx.join(basket, how="inner")
@@ -101,10 +101,10 @@ The **T-learner** trains two models — one on treated, one on control — and t
 
 ```{python}
 #| label: t-learner
-data_enc = pd.get_dummies(data, columns=["first_top_group"], drop_first=True, dtype=int)
+data_enc = pd.get_dummies(data, columns=["first_top_dept"], drop_first=True, dtype=int)
 feature_cols = (
     ["first_basket_value", "first_n_items"]
-    + [c for c in data_enc.columns if c.startswith("first_top_group_")]
+    + [c for c in data_enc.columns if c.startswith("first_top_dept_")]
 )
 X = data_enc[feature_cols].values
 T = data_enc["first_had_discount"].values
