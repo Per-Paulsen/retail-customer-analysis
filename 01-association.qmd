@@ -322,6 +322,57 @@ for cls, n in simple["class"].value_counts().items():
 
 The class distribution is itself diagnostic: a healthy retail dataset has a substantial cross-sell tail (true behavioural signal), but also legitimate bundle/substring pairs (catalog plumbing). The three views above let you pick the right cut for the question at hand instead of forcing one filter to fit all three jobs.
 
+## What each view means operationally
+
+The methods above produce three rule lists. Each answers a different business question and feeds a different operational system. Here is what to do with each:
+
+### View 1 — Bundle composition
+
+**Question answered**: *"Which items are part of the same product system?"*
+
+**What you read off it**: rules where antecedent + consequent are functional companions in one decision — bed + mattress + frame, sofa + matching cushion + element pieces, dining-table + chairs + extension. Lift here is large because the relationship is structural, not behavioural.
+
+**Operational use cases**:
+- **Set-bundling**: package the strongest within-system pairs as ready-made bundles ("Bett + Lattenrost + Matratze als Set"). The high-lift pairs are the obvious bundle candidates.
+- **"Complete your set" prompts**: at checkout, if the basket has only the primary item from a set, surface the missing components.
+- **Inventory coupling**: when stock of a primary item runs low, check the paired components — a stockout on the main product reduces demand for components, and vice-versa.
+- **Catalog hygiene**: rules with extreme symmetry (≥ 0.9) are products you should consider merging into a single SKU or bundle, since customers don't really choose between them.
+
+### View 2 — Cross-sell
+
+**Question answered**: *"Which item from one product system pulls in an item from another?"*
+
+**What you read off it**: rules where the antecedent and consequent live in *different* bundles, are *not* substring-related, and the antecedent is *not* a generic component token. These are real cross-sell triggers: the antecedent is a stand-alone product whose buyer also pulls a different stand-alone product.
+
+**Operational use cases**:
+- **Page-view recommendations**: when a customer views the antecedent product, surface the consequent in "you might also like" — but only the cross-sell view, not the bundle view, otherwise the suggestion looks redundant.
+- **POS / checkout prompts**: cashier sees "TV-Schrank im Warenkorb → Highboard im Angebot anbieten".
+- **Targeted email**: 14–30 days after antecedent purchase, send a follow-up offering the consequent at a small discount.
+- **Floor placement**: place cross-sell pairs visually adjacent in the showroom (Sessel-Hocker-Kombination im selben Sichtbereich).
+- **Cross-sell incentive plan**: if you compensate sales staff per cross-sell, this is the list of pairs that count — not the bundle pairs (those are baseline expectation, not extra effort).
+
+### View 3 — Top insights (statistical strength)
+
+**Question answered**: *"What are the strongest co-purchase patterns in the dataset, regardless of class?"*
+
+**What you read off it**: rules sorted by lift, each annotated with its class — `component ↔ main`, `substring`, `within-bundle (sym/asym)`, `symmetric (cross-bundle)`, `cross-sell (asymmetric)`. The reader sees the strongest signal first, the class column tells them whether to act on it (cross-sell), package it (bundle), or note it as catalog structure (component / substring).
+
+**Operational use cases**:
+- **Stakeholder report / management presentation**: "Diese 20 Pairs erklären den Großteil der Co-Purchase-Struktur im Sortiment, hier sortiert nach Stärke und klassifiziert."
+- **Methodology audit**: an analyst auditing the cross-sell list (View 2) can use View 3 as a sanity check — if a high-lift rule is missing from View 2, it's because the class column says it's bundle/substring/component, which is correct triage.
+- **Catalog documentation**: the View 3 output is a snapshot of which products are tightly coupled in customer behaviour, useful for onboarding new merchandisers.
+
+## What this chapter does *not* answer
+
+Apriori on baskets only tells us *what is bought together*. It says nothing about:
+
+- *Who* the buyers are (chapter 04 CLV, 06 Survival, 09 Uplift)
+- *Which products dominate revenue or are growing* (chapter 02 BCG, 03 RFM)
+- *What demand looks like next quarter* (chapter 07 Forecasting)
+- *Which products are functionally substitutable when one is out of stock* (chapter 08 Embeddings)
+
+The full operational picture — *which* products to push to *which* customers, *when*, with *which* offer — comes from joining the View 2 cross-sell rules with the customer-side analyses (CLV decile, win-back zone, hazard ratios) and the product-side rankings (BCG quadrants, RFM tier). That synthesis lives in [chapter 05 Insights](05-insights.qmd).
+
 ```{python}
 #| label: fig-rules-python
 #| fig-cap: "Same scatter view in Python: support × confidence, colored by lift."
