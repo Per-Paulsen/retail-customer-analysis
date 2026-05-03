@@ -375,16 +375,39 @@ The full operational picture — *which* products to push to *which* customers, 
 
 ```{python}
 #| label: fig-rules-python
-#| fig-cap: "Same scatter view in Python: support × confidence, colored by lift."
+#| fig-cap: "Simple rules in support × confidence space, classified. Cross-sell rules (the actionable subset) sit visually apart from within-bundle and component-pair plumbing — the same Apriori output, shown with the triage class as colour."
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-fig, ax = plt.subplots(figsize=(8, 5))
-sns.scatterplot(data=rules, x="support", y="confidence", hue="lift",
-                palette="viridis", ax=ax)
+# Stable class order so the legend reads top-to-bottom from "actionable" to
+# "definitional plumbing".
+class_order = [
+    "cross-sell (asymmetric)",
+    "symmetric (cross-bundle)",
+    "within-bundle (asymmetric)",
+    "within-bundle (symmetric)",
+    "substring (definitional)",
+    "component ↔ main (definitional)",
+]
+class_palette = {
+    "cross-sell (asymmetric)":          "#27ae60",
+    "symmetric (cross-bundle)":         "#3498db",
+    "within-bundle (asymmetric)":       "#9b59b6",
+    "within-bundle (symmetric)":        "#7f8c8d",
+    "substring (definitional)":         "#f39c12",
+    "component ↔ main (definitional)":  "#c0392b",
+}
+
+fig, ax = plt.subplots(figsize=(9, 5.5))
+sns.scatterplot(
+    data=simple, x="support", y="confidence",
+    hue="class", hue_order=class_order, palette=class_palette,
+    size="lift", sizes=(20, 220), alpha=0.8, ax=ax,
+)
 ax.set_xscale("log")
 ax.set_xlabel("Support (log scale)")
 ax.set_ylabel("Confidence")
+ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8, frameon=False)
 plt.tight_layout()
 plt.show()
 ```

@@ -77,7 +77,7 @@ We standardize both features and run k-means for several values of *k*, plotting
 
 ```{python}
 #| label: fig-elbow
-#| fig-cap: "Elbow plot. The bend around k=4 suggests four meaningful clusters."
+#| fig-cap: "Elbow plot — within-cluster sum of squares as a function of k. The classic BCG framework distinguishes four quadrants (Stars / Cash Cows / Question Marks / Dogs); we use k=4 for that mapping. Whether the elbow visually agrees depends on the data: synth has a clean bend at k=4, real-data is usually less sharply elbowed and the choice of k=4 is then framework-driven, not data-driven."
 features = period_rev[["growth", "share"]].values
 X = StandardScaler().fit_transform(features)
 
@@ -92,7 +92,7 @@ ax.set_xlabel("k"); ax.set_ylabel("Within-cluster SS")
 plt.show()
 ```
 
-The elbow lands around **k = 4** — neat alignment with the four BCG quadrants.
+We use **k = 4** to map onto the four BCG quadrants. On synthetic data the elbow lines up cleanly with that choice; on real data the curve is often smoother and the k=4 decision becomes framework-driven (we want exactly four tiers for executive reporting) rather than purely data-driven.
 
 ## Fit the clusters
 
@@ -254,6 +254,6 @@ Department-level readings are coarser by design — you lose the per-product det
 
 ## Takeaway
 
-The k=4 clustering recovers the BCG framework directly from data, and the assignments line up with the temporal trends we engineered: growing products land in the top-right, declining ones in the bottom-left, mature high-volume products as cash cows in the middle-right.
+The k=4 clustering recovers the BCG framework directly from data: growing products land in the top-right (Stars), declining ones in the bottom-left (Dogs), mature high-volume products as Cash Cows in the middle-right, low-share / high-growth as Question Marks. On synthetic data the clusters reproduce the engineered trends; on real data they reflect the actual catalog dynamics over the observed window.
 
 For a real retailer, the actionable read is *don't* spread marketing budget evenly across the catalog. Lean into Stars and rising Question Marks, milk Cash Cows for the cash they generate, and rationalize the Dogs (delist or replace).

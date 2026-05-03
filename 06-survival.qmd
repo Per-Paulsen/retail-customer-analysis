@@ -66,7 +66,7 @@ print(f"  censored at OBS_END:      {int((surv['event'] == 0).sum()):>5,d}  ({1 
 print(f"Duration range: {int(surv['duration'].min())}–{int(surv['duration'].max())} days")
 ```
 
-Roughly 29% of customers in the cohort returned within the observation window. The remaining 71% are censored — some genuinely never will return, others simply haven't had enough time yet.
+The split between observed-return and censored customers is printed above. Right-censoring is heavy by design in retail — a substantial fraction of first-time buyers either genuinely never come back, or simply haven't had enough time yet.
 
 ## Population survival curve — Kaplan-Meier
 
@@ -95,9 +95,9 @@ plt.show()
 
 Reading the curve:
 
-- After **90 days**, ~81% of first-time buyers still haven't come back. This isn't alarming — the "win-back" zone is much later.
-- By **180 days**, ~74% remain non-repeat. Half a year of silence is meaningful but not yet final.
-- By **365 days**, the curve has flattened to ~68%. The tail of customers who *will eventually* return after a year is small.
+- After **90 days**: a large majority of first-time buyers still haven't come back. This isn't alarming — the "win-back" zone is much later.
+- By **180 days**: half a year of silence is meaningful but not yet final.
+- By **365 days**: the curve typically flattens. The tail of customers who *will eventually* return after a year is small. Exact survival probabilities at each milestone are printed by `kmf.predict([90, 180, 365])` above (or read off the chart) — they shift between datasets.
 
 The fact that the curve doesn't decay to zero (median survival is `∞`) reflects a real-retail truth: the majority of one-time buyers stay one-time buyers. Survival analysis quantifies *which fraction* and *when*, instead of pretending everyone returns.
 
@@ -161,7 +161,7 @@ print(f"  p-value:         {result.p_value:.4f}")
 
 If the curves were materially different, we'd see clear separation and a small p-value. Here they sit on top of one another and the log-rank test fails to reject the null — *the first basket's department does not predict the return timing in this dataset.*
 
-That's not a bug; it's the right answer. We engineered customer behavior to be **independent** of what they bought first (lifetime and rate are random per customer, not conditioned on basket contents). A real dataset would almost certainly show category effects — but inventing them here would be cheating.
+On synthetic data this is the correct answer by design — customer behaviour is generated **independent** of what they bought first (lifetime and rate are random per customer, not conditioned on basket contents). On real data a null result here means *for this cohort, on this window, with these covariates*, first-basket dominant department doesn't move the comeback timing. Real retention drivers may live elsewhere (cohort, channel, lifecycle stage, season).
 
 ## Cox proportional hazards — multiple covariates
 

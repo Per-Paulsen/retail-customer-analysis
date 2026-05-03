@@ -68,7 +68,7 @@ Most articles have very recent last sales — the data window ends at the refere
 
 ```{r}
 #| label: fig-elbow
-#| fig-cap: "Elbow plot: the within-cluster sum of squares drops sharply through k=4, flattening after."
+#| fig-cap: "Elbow plot — within-cluster sum of squares as a function of k. We use k=4 to mirror the four-tier RFM segmentation convention; the elbow on synthetic data lines up with that choice, on real data the curve is smoother and the choice is framework-driven."
 features <- scale(rfm[, c("frequency", "recency", "value")])
 
 inertias <- sapply(1:10, function(k) {
@@ -81,7 +81,7 @@ ggplot(data.frame(k = 1:10, ss = inertias), aes(k, ss)) +
   labs(x = "Number of clusters", y = "Within-cluster SS")
 ```
 
-The bend lands around **k = 4** — same as the BCG analysis, suggesting the catalog naturally falls into roughly four product archetypes.
+We use **k = 4** to give a four-tier segmentation (R1–R4 / F1–F4 / M1–M4-style ranks). On synthetic data the bend lines up cleanly with k=4, on real data the choice is framework-driven (consistent four-tier story across BCG and RFM) rather than purely data-driven.
 
 ## Fit and rank clusters
 

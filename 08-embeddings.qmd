@@ -115,7 +115,7 @@ print(f"PPMI range:         {ppmi.min():.2f} — {ppmi.max():.2f}")
 
 ## Step 3 — Truncated SVD → low-rank embeddings
 
-The 66×66 PPMI matrix is mostly zero. Truncated SVD compresses it to a low-rank approximation; each SKU gets a `k`-dimensional vector summarizing its co-occurrence neighborhood:
+The PPMI matrix (`n_skus × n_skus`) is mostly zero. Truncated SVD compresses it to a low-rank approximation; each SKU gets a `k`-dimensional vector summarizing its co-occurrence neighborhood:
 
 $$\text{PPMI} \approx U \Sigma V^\top, \qquad \text{embedding}_i = U_i \sqrt{\Sigma}$$
 
@@ -185,7 +185,7 @@ Reducing the 24-dimensional embeddings to 2D. Colored by the SKU's `product_grou
 
 ```{python}
 #| label: fig-tsne
-#| fig-cap: "t-SNE projection of the 66-SKU embeddings, colored by product group. Same-family SKUs cluster tightly; product groups form larger neighborhoods. The algorithm never saw the labels — it learned the structure from co-purchase context alone."
+#| fig-cap: "t-SNE projection of the SKU embeddings, colored by product group. Same-family SKUs cluster tightly; product groups form larger neighborhoods. The algorithm never saw the labels — it learned the structure from co-purchase context alone."
 groups = [group_lookup[s] for s in items]
 families = [family_lookup[s] for s in items]
 
@@ -273,7 +273,7 @@ Rules and embeddings answer different questions. Rules are for *what to add* to 
 
 ## Limitations
 
-- **66 SKUs is genuinely small.** Word2vec-class methods shine with vocabularies of thousands. Here the structure is real but the geometry has wiggle room — t-SNE with different `perplexity` settings shifts the layout noticeably. With 1000+ SKUs the embeddings would be far more stable.
+- **Vocabulary size matters.** Word2vec-class methods shine with vocabularies of thousands. On the synthetic dataset (~66 SKUs) the structure is real but the geometry has wiggle room — t-SNE with different `perplexity` settings shifts the layout noticeably. On the real dataset (~3,500 SKUs) the embeddings are much more stable.
 - **No customer dimension.** These are *product*-side embeddings. Adding *customer* embeddings would let us recommend SKUs a *specific customer* is likely to want, not just substitutes for a given SKU. That's the next step — collaborative filtering / two-tower models.
 - **Ratings of model variants are functional, not perceptual.** The embedding says `bed harmony` is similar to `bed milano` because they appear in similar baskets. It doesn't capture *why* — same target customer, similar price point, same supplier, etc. Adding metadata (price, supplier, color) into the embedding (concatenate-then-PCA, or a metadata-aware model) would sharpen the substitution suggestions.
 - **PPMI × SVD vs. word2vec.** Mathematically equivalent in expectation. For our 66 items either works; for a real catalog you'd use online word2vec, BPR matrix factorization, or graph neural networks on the customer-product bipartite graph.

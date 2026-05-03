@@ -75,7 +75,7 @@ print("Distribution of frequencies (repeat purchases per customer):")
 print(summary["frequency"].value_counts().sort_index().head(10))
 ```
 
-The 70/30 split between one-time and returning customers is the kind of heavy tail BG/NBD is designed for.
+A heavy-tailed split between one-time and returning customers — typically 60–80 % one-time in retail data — is exactly the regime BG/NBD was designed for. The exact ratio in the printed summary above depends on which dataset is loaded.
 
 ## Fit BG/NBD
 

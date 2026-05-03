@@ -34,7 +34,7 @@ RANDOM_STATE = 42
 | **Covariates X** | First-basket value, items in basket, dominant product group |
 | **Question** | What is the causal effect of treatment on outcome, per individual? |
 
-A *crucial* property of this dataset: discounts are assigned **randomly** in the synthesis. There's no link between which customers get a discount and which customers tend to come back. That makes this an idealized setting — analogous to a randomized controlled trial. With observational data the same techniques apply but you need additional care for confounding (propensity scores, doubly-robust estimators).
+A *crucial* assumption for unbiased causal estimation: random treatment assignment. On the **synthetic** dataset that holds by construction — discounts are generated independently of customer characteristics. On the **real** dataset it almost certainly does *not* hold — discounts in actual retail are typically targeted (loyalty programs, salesperson discretion, end-of-season clearance, customer-segment campaigns). The methods below are *valid as written* on synth, *biased as written* on real — propensity-score weighting / DR-learner / Causal Forest are needed to clean that up. We surface the methodology gap explicitly rather than pretending the techniques are interchangeable across data sources.
 
 ```{python}
 #| label: build-customer-table

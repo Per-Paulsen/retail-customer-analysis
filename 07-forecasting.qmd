@@ -58,7 +58,7 @@ for cat, val in totals.items():
 
 ```{python}
 #| label: fig-series
-#| fig-cap: "Monthly revenue per category. Higher-volume categories (BEDR, DINI, LIVI) have visible seasonal-ish wobble; smaller ones are noisier."
+#| fig-cap: "Monthly revenue per category. Higher-volume categories show visible seasonal-ish wobble; smaller ones are noisier. Which categories lead in revenue is data-dependent (see the per-category total printed above)."
 fig, ax = plt.subplots(figsize=(11, 5))
 for cat in totals.index:
     s = monthly[monthly["product_group"] == cat].set_index("month")["revenue"]
@@ -188,7 +188,7 @@ A few patterns emerge:
 
 ## Granularity matters — Department vs. Category
 
-The above runs at *Category* level (10 series). The catalog also has a *Department* level above category (6 series), which aggregates across related categories. With the same 24 months of data, Department-level series have **roughly the noise floor halved** — Living combines LIVI + DECO + LIGH + ELEC, so randomness in any one category averages out.
+The above runs at *Category* level (~10 series — `product_group`). The catalog also has a *Department* level above category (6 series), which aggregates across related categories. With the same monthly window, Department-level series have **roughly the noise floor halved** — `Living` for example combines `LIVI + DECO + LIGH + ELEC`, so randomness in any one category averages out.
 
 ```{python}
 #| label: department-backtest
@@ -237,7 +237,7 @@ This is the textbook trade-off in hierarchical forecasting: **higher granularity
 2. Forecast at **Category level** for inventory and promotional planning (the "how many garden tables in March?" question).
 3. **Reconcile** so the per-category forecasts sum to the department forecast — there are libraries like Nixtla's `hierarchicalforecast` for exactly this.
 
-We don't reconcile here (24 months is too thin to demonstrate it well), but the takeaway sticks: the right level of granularity is *the one the decision needs*, not always the finest available.
+We don't reconcile here (the ~24-month window is too thin to demonstrate it well), but the takeaway sticks: the right level of granularity is *the one the decision needs*, not always the finest available.
 
 ## Forecast vs. actual — three representative categories
 
@@ -290,7 +290,7 @@ For *this* dataset, the right operational approach would be:
 
 ## Limitations
 
-- **24 months is genuinely too few** for confident seasonal modeling. In production, you'd want 3–5 years.
+- **~24 months is genuinely too few** for confident seasonal modeling. In production, you'd want 3–5 years.
 - **Synthetic data has no embedded seasonality**. Our generator produces uniform-in-time transactions modulo trend; real retail has strong holiday peaks (Christmas, Easter, summer for outdoor) that would make seasonal models far more useful than they appear here.
 - **Cross-category dependencies aren't modeled**. Hierarchical / multivariate models (e.g. VAR, hierarchical reconciliation in `hierarchicalforecast`) would exploit shared structure across categories.
 - **Point forecasts only**. Real forecasting work always reports prediction intervals; we skipped them for brevity but `SARIMAX.get_forecast(steps).conf_int()` provides them out-of-the-box.
