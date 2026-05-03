@@ -202,11 +202,22 @@ The split is exactly what the model is designed to surface: customers who bought
 
 ## Add monetary — Gamma-Gamma
 
-Gamma-Gamma estimates expected per-transaction value. It can only be fit on customers with **at least one repeat purchase** (otherwise we have no within-customer monetary spread).
+Gamma-Gamma estimates expected per-transaction value. It can only be fit on customers with **at least one repeat purchase** (otherwise we have no within-customer monetary spread). Two best-practice precautions before fitting:
+
+1. **Drop non-positive monetary values.** Real retail data has refunds netting to ≤ 0; Gamma-Gamma is defined on the positive reals.
+2. **Trim the top-1% extreme values.** A handful of very-high-basket customers (think bulk order, contract sale, or data entry typo) can pull the Gamma fit and inflate population CLV. Industry practice is to winsorise or trim before fitting; we trim at the 99th percentile and report how many customers were affected.
 
 ```{python}
 #| label: fit-gamma-gamma
 returning = summary[(summary["frequency"] >= 1) & (summary["monetary_value"] > 0)].copy()
+
+# Trim top-1% monetary outliers (capped at P99) — the Gamma-Gamma fit is
+# sensitive to extreme high values otherwise.
+p99 = returning["monetary_value"].quantile(0.99)
+n_above = int((returning["monetary_value"] > p99).sum())
+print(f"Monetary value trim: {n_above} customers (top 1%) above €{p99:,.0f} "
+      f"capped to that level before Gamma-Gamma fit.")
+returning["monetary_value"] = returning["monetary_value"].clip(upper=p99)
 
 ggf = GammaGammaFitter(penalizer_coef=0.01)
 ggf.fit(returning["frequency"], returning["monetary_value"])

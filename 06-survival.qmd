@@ -199,6 +199,26 @@ In a real retail setting you'd typically expect some non-trivial effects:
 
 The chapter machinery transfers directly when those effects are present.
 
+### Proportional hazards check — does the Cox PH assumption hold?
+
+A Cox model only makes sense if the proportional-hazards (PH) assumption holds: the hazard ratio for each covariate is *constant over time*. If a covariate has a different effect early vs. late (e.g. a discount that boosts return in the first 90 days but does nothing afterwards), Cox PH is the wrong model and the hazard ratios above are misleading.
+
+The standard diagnostic is the **Schoenfeld-residual test** (Grambsch & Therneau, 1994). `lifelines` exposes this as `cph.check_assumptions()`. A small p-value flags a covariate whose hazard ratio drifts with time — Cox should then be replaced with stratification on that covariate or a time-varying coefficient model.
+
+```{python}
+#| label: schoenfeld
+results = cph.check_assumptions(cph_input, show_plots=False)
+# check_assumptions returns a list of test_statistics objects (one per covariate
+# for which a violation is reported); on synth-data this list is typically empty.
+if isinstance(results, list) and len(results) == 0:
+    print("All covariates pass the proportional-hazards assumption (no flagged violations).")
+else:
+    print("Some covariates violate proportional hazards — see the test output above.")
+    print("Standard fixes: stratify on the violating covariate, or use a time-varying coefficient model.")
+```
+
+A clean Schoenfeld result confirms the hazard ratios above can be read at face value. A failed test on real data would be itself a finding — it tells the operations team that the covariate's effect *changes* over the customer's lifetime, which is itself actionable (a "30-day discount-driven boost" looks very different from a "permanent loyalty effect").
+
 ## Practical translation
 
 Even with no covariate effects, the population survival curve gives concrete numbers for retention operations:

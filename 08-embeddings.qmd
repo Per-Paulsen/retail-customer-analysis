@@ -87,30 +87,54 @@ print(f"Baskets: {len(baskets)}")
 print(f"Pairwise co-occurrences (off-diagonal nonzero): {(co > 0).sum() // 2} pairs")
 ```
 
-## Step 2 — PPMI (Positive Pointwise Mutual Information)
+## Step 2 — Shifted PPMI (Positive Pointwise Mutual Information)
 
 Raw counts overweight popular SKUs. PMI corrects for this by comparing observed joint probability with what we'd expect under independence:
 
 $$\text{PMI}(i, j) = \log \frac{P(i, j)}{P(i)\, P(j)}$$
 
-PPMI clips negative values (less co-occurrence than chance — noise on this dataset size) to zero.
+We apply two textbook refinements (Levy & Goldberg 2014):
+
+- **Min-count cutoff**: drop SKUs with fewer than `MIN_COUNT` basket appearances *before* computing PMI. Items that show up only once or twice can produce extreme PMI values that aren't statistically reliable; cutting them tightens the embedding geometry. Industry default is 5–10.
+- **Shifted PPMI**: the equivalence with word2vec-with-negative-sampling holds for `max(0, PMI - log(k))`, where `k` is the number of negative samples. This shifts the zero-threshold rightward — only co-occurrences that beat chance by a factor of `k` survive. We use `k = 5` (standard word2vec default).
 
 ```{python}
 #| label: ppmi
+MIN_COUNT = 5
+NEG_K = 5  # negative-sampling shift for word2vec-equivalent PPMI
+
+# Drop rare SKUs — they don't have enough basket-co-occurrence to yield a
+# reliable embedding row, and their noise leaks into the SVD.
+keep_mask = item_count >= MIN_COUNT
+co_filtered    = co[keep_mask][:, keep_mask]
+ic_filtered    = item_count[keep_mask]
+items_filtered = [items[i] for i in range(len(items)) if keep_mask[i]]
+print(f"SKUs before min-count filter: {len(items)}")
+print(f"SKUs after  min-count filter (≥ {MIN_COUNT} baskets): {len(items_filtered)}")
+
 total_baskets = len(baskets)
-P_ij = co / total_baskets
-P_i  = item_count / total_baskets
+P_ij = co_filtered / total_baskets
+P_i  = ic_filtered / total_baskets
 expected = np.outer(P_i, P_i)
 
 with np.errstate(divide="ignore", invalid="ignore"):
     pmi = np.log(P_ij / expected)
     pmi[~np.isfinite(pmi)] = 0
-ppmi = np.maximum(pmi, 0)
+# Shifted PPMI: subtract log(k) before clipping at zero. Equivalent to the
+# word2vec-with-negative-sampling factorisation per Levy & Goldberg.
+ppmi = np.maximum(pmi - np.log(NEG_K), 0)
 
-ppmi_df = pd.DataFrame(ppmi, index=items, columns=items)
-print(f"PPMI matrix shape: {ppmi.shape}")
-print(f"Nonzero entries:    {(ppmi > 0).sum()}")
-print(f"PPMI range:         {ppmi.min():.2f} — {ppmi.max():.2f}")
+ppmi_df = pd.DataFrame(ppmi, index=items_filtered, columns=items_filtered)
+print(f"\nShifted PPMI matrix shape: {ppmi.shape}")
+print(f"Nonzero entries:           {(ppmi > 0).sum()}")
+print(f"Shifted PPMI range:        {ppmi.min():.2f} — {ppmi.max():.2f}")
+
+# Make the post-filter variables the canonical names used downstream.
+items = items_filtered
+item_count = ic_filtered
+co = co_filtered
+ix = {a: i for i, a in enumerate(items)}  # rebuild index mapping
+n  = len(items)
 ```
 
 ## Step 3 — Truncated SVD → low-rank embeddings

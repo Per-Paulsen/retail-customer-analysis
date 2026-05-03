@@ -195,8 +195,29 @@ print(f"{len(audit_table)} articles audited, "
 audit_table.head(10).round({"revenue": 0, "revenue_share": 4})
 ```
 
+## 6. Outlier and missing-value strategy across chapters
+
+Real retail data has long-tailed monetary values, occasional refund netting to non-positive revenue, and a residual fraction of rows where the source taxonomy didn't yield a category. Each downstream chapter handles these in a way appropriate to its method — a single global imputation rule would be wrong, since what counts as "outlier" depends on the model. Here is the consolidated view of what gets filtered or transformed where:
+
+| Chapter | Treatment | Why |
+|---|---|---|
+| **preprocess_real_data.py** | Drop rows with missing date/article_name; drop accounting-only Warengruppen 50/70 | Not real product sales — would distort every downstream analysis |
+| **01 Association** | `arules::is.redundant()` filter; bundle / substring / component triage | Definitional rules vs. behavioural rules — separate, don't pretend |
+| **02 BCG** | Cluster on signed-cube-root-transformed `share`, `growth` | Heavy-tailed retail features otherwise pull centroids toward outliers |
+| **03 RFM** | Drop articles with non-positive total revenue (refund netting); log-transform `frequency` and `value` before standardise | log1p of negatives is NaN; heavy revenue tail otherwise dominates clusters |
+| **04 CLV** | Filter customers to `frequency ≥ 1` *and* `monetary_value > 0`; clip top-1% monetary values at P99 before Gamma-Gamma | Gamma-Gamma is defined on the positive reals; extreme high values pull the fit |
+| **06 Survival** | `dropna()` on Cox PH covariate inputs | lifelines doesn't accept NaN in covariates |
+| **07 Forecasting** | Drop empty `department` / `product_group` rows from the per-series aggregation | Aggregating to "" produces a meaningless residual series |
+| **08 Embeddings** | Min-count cutoff (drop SKUs in fewer than 5 baskets); shifted PPMI with `k=5` | Rare items have unreliable PMI; shift removes chance-only co-occurrences |
+| **09 Uplift** | Propensity-score model with cross-fitting; clip propensity at [0.05, 0.95] for AIPW | Extreme propensities make IPW unstable |
+
+Two missing-value cases left intentionally untouched:
+
+- **`department` / `product_group` empty (~5 % of real rows)**: rows where the source had no Warengruppe code and the article_name didn't match any of `NAME_DEPARTMENT_PATTERNS`. Filtered in chapters that aggregate on these columns (07 Forecasting via `df_dept` / `df_cat`); kept everywhere else as a residual category. Imputing into a "Misc" bucket would hide the data quality issue behind an artificial label.
+- **`article_name` light-normalised but unmapped**: the light-normalisation (lowercase + accent-strip + whitespace collapse) reduces ~2 200 raw German names to ~2 100 unique values. We deliberately *don't* map further onto a synth-aligned taxonomy — that would destroy the real-data granularity. See [`docs/GRANULARITY_ANALYSIS.md`](../docs/GRANULARITY_ANALYSIS.md) for the empirical decision.
+
 ## A note on iteration
 
-This audit chapter is a refactor, not pristine first-thought work. It was added after the first analytical pass surfaced findings that domain experts would have caught instantly — the `dvd_player` situation, the `bed → mattress` rules, products lurking in the bottom of every cluster. Surfacing those earlier as "data quality / catalog hygiene" issues, rather than letting them appear as analytical conclusions, is exactly the iterative refinement that's standard in real analytical work.
+This audit chapter is a refactor, not pristine first-thought work. It was added after the first analytical pass surfaced findings that domain experts would have caught instantly — products lurking in the bottom of every cluster, definitional `bed → mattress` rules treated as insight, and a long tail of catalog hygiene issues. Surfacing those earlier as "data quality / catalog hygiene" issues, rather than letting them appear as analytical conclusions, is exactly the iterative refinement that's standard in real analytical work.
 
 Showing the iteration here, instead of pretending the audit was always there, is the more honest framing — and arguably the more useful one to readers learning analytical practice.
