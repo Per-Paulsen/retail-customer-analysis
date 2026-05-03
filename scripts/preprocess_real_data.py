@@ -118,11 +118,20 @@ SCHEMA_ORDER: list[str] = [
 # not affected — we keep real product granularity (~2,100 light-normalised
 # variants) and use bundle_group as an orthogonal classification.
 BUNDLE_PATTERNS: list[tuple[str, str]] = [
-    # bed system — bed, mattress, frame, headboard, nightstand, related accessories
-    (r"\b(bett|matratze|kopfteil|nachttisch|nachtkonsole|lattenrost|nako|bettkasten|bettwasche|bettwaesche|schaummatratze)\b",
+    # bed system — bed (all variants), mattress, frame, headboard, nightstand,
+    # related sleep accessories (topper, lattenrost, ...)
+    (r"\b(bett|bettrahmen|bettgestell|bettkasten|doppelbett|systembett|"
+     r"balkenbett|schubkastenbett|kinderbett|einzelbett|hochbett|"
+     r"mittelhochbett|boxspringbett|comfortbett|"
+     r"matratze|schaummatratze|topper|"
+     r"kopfteil|"
+     r"nachttisch|nachtkonsole|nachtkommode|nako|"
+     r"lattenrost|bettwaesche|bettwasche)\b",
      "bed_system"),
     # dining system — table, chairs, extensions, vitrines, anrichte, sideboard
-    (r"\b(esstisch|stuhl|freischwinger|schwinger|vitrine|sideboard|anrichte|ansteckplatte|auszug|auszugselement|tischverlangerung|baumtisch)\b",
+    (r"\b(esstisch|stuhl|freischwinger|schwinger|vitrine|sideboard|"
+     r"anrichte|ansteckplatte|auszug|auszugselement|tischverlangerung|"
+     r"baumtisch)\b",
      "dining_system"),
     # kitchen
     (r"\b(kuechentisch|kuechenstuhl|barhocker)\b",
@@ -131,11 +140,19 @@ BUNDLE_PATTERNS: list[tuple[str, str]] = [
     (r"\b(schreibtisch|buerostuhl|buecherregal|aktenschrank|sekretaer|rollcontainer)\b",
      "office_system"),
     # garden / outdoor
-    (r"\b(garten|gartentisch|gartenstuhl|sonnenschirm|liege.*garten|gartenliege|outdoor|parasol)\b",
+    (r"\b(garten|gartentisch|gartenstuhl|sonnenschirm|liege.*garten|"
+     r"gartenliege|outdoor|parasol)\b",
      "garden_system"),
     # upholstered system — sofa, sessel, eckgarnitur and their typical paired
-    # components (akku for massage chairs, kopfstutze, kissen variants)
-    (r"\b(sofa|sessel|garnitur|eckgarnitur|schlafsofa|sitzer|polster|polsterecke|ecksofa|ohrenbackensessel|ohrensessel|kopfstutze|akku|armlehnkissen|nierenkissen|klemmkissen)\b",
+    # components (akku for massage chairs, kopfstutze, kissen variants,
+    # plus polster-specific add-on parts like steckkissen, elementaufnahme,
+    # polsterelement, bogenhocker)
+    (r"\b(sofa|sessel|garnitur|eckgarnitur|schlafsofa|sitzer|polster|"
+     r"polsterecke|polsterelement|ecksofa|ohrenbackensessel|ohrensessel|"
+     r"solitaersessel|ruhesessel|bogenhocker|"
+     r"kopfstutze|akku|"
+     r"armlehnkissen|armlehnenkissen|nierenkissen|klemmkissen|steckkissen|"
+     r"elementaufnahme|ruckenkissen|ruckenelement)\b",
      "upholstered_system"),
 ]
 

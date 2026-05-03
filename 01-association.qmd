@@ -230,11 +230,13 @@ def has_component_token(name):
     return bool(set(name.split()) & COMPONENT_TOKENS)
 
 simple["component_antecedent"] = simple["antecedent"].apply(has_component_token)
+simple["component_consequent"] = simple["consequent"].apply(has_component_token)
+simple["component_either"] = simple["component_antecedent"] | simple["component_consequent"]
 
 print(f"Total simple rules:          {len(simple)}")
 print(f"  within-bundle:             {int(simple['within_bundle'].sum())}")
 print(f"  substring-pair:            {int(simple['substring_pair'].sum())}")
-print(f"  component-antecedent:      {int(simple['component_antecedent'].sum())}")
+print(f"  component on either side:  {int(simple['component_either'].sum())}")
 print(f"  symmetric (≥ 0.7):         {int((simple['symmetry'] >= 0.7).sum())}")
 print(f"  lift ≥ 2 (non-trivial):    {int((simple['lift'] >= 2).sum())}")
 ```
@@ -249,14 +251,14 @@ bundle_view = (
     simple[
         (simple["within_bundle"])
         | (simple["substring_pair"])
-        | (simple["component_antecedent"])
+        | (simple["component_either"])
     ]
     .assign(score=lambda d: d["symmetry"] * d["lift"])
     .sort_values("score", ascending=False)
 )
 bundle_view.head(15)[["antecedent", "consequent", "support", "confidence",
                       "reverse_conf", "symmetry", "lift",
-                      "within_bundle", "substring_pair", "component_antecedent"]]\
+                      "within_bundle", "substring_pair", "component_either"]]\
     .round({"support": 4, "confidence": 3, "reverse_conf": 3,
             "symmetry": 2, "lift": 2})
 ```
@@ -271,7 +273,7 @@ cross_sell = (
     simple[
         ~simple["within_bundle"]
         & ~simple["substring_pair"]
-        & ~simple["component_antecedent"]
+        & ~simple["component_either"]
         & (simple["symmetry"] < 0.7)
         & (simple["lift"] >= 2)
     ]
@@ -292,8 +294,8 @@ These are the rules to wire into "you might also need" prompts at checkout / pag
 ```{python}
 #| label: view-top-insights
 def classify(r):
-    if r["component_antecedent"]:
-        return "component → main (definitional)"
+    if r["component_either"]:
+        return "component ↔ main (definitional)"
     if r["substring_pair"]:
         return "substring (definitional)"
     if r["within_bundle"]:

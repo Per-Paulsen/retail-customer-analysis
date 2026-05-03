@@ -161,13 +161,15 @@ COMPONENT_TOKENS_DB = {
     "ersatz", "ersatzteil", "zubehor", "zubehoer", "nachbestellung",
     "deko",
 }
-simple["component_antecedent"] = simple["antecedent"].apply(
-    lambda n: bool(set(n.split()) & COMPONENT_TOKENS_DB))
+_has_comp_db = lambda n: bool(set(n.split()) & COMPONENT_TOKENS_DB)
+simple["component_either"] = (
+    simple["antecedent"].apply(_has_comp_db)
+    | simple["consequent"].apply(_has_comp_db))
 
 cross_sell = simple[
     ~simple["within_bundle"]
     & ~simple["substring_pair"]
-    & ~simple["component_antecedent"]
+    & ~simple["component_either"]
     & (simple["symmetry"] < 0.7)
     & (simple["lift"] >= 2)
 ].sort_values("confidence", ascending=False).reset_index(drop=True)

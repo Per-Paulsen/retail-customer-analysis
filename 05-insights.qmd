@@ -199,15 +199,17 @@ COMPONENT_TOKENS_05 = {
     "ersatz", "ersatzteil", "zubehor", "zubehoer", "nachbestellung",
     "deko",
 }
-simple["component_antecedent"] = simple["antecedent"].apply(
-    lambda n: bool(set(n.split()) & COMPONENT_TOKENS_05)
+_has_comp = lambda n: bool(set(n.split()) & COMPONENT_TOKENS_05)
+simple["component_either"] = (
+    simple["antecedent"].apply(_has_comp)
+    | simple["consequent"].apply(_has_comp)
 )
 
 # Cross-sell view: the deployable subset (chapter 01, View 2).
 cross_sell = simple[
     ~simple["within_bundle"]
     & ~simple["substring_pair"]
-    & ~simple["component_antecedent"]
+    & ~simple["component_either"]
     & (simple["symmetry"] < 0.7)
     & (simple["lift"] >= 2)
 ].copy()
