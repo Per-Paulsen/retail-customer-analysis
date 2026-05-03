@@ -177,10 +177,37 @@ simple["substring_pair"] = simple.apply(
     axis=1,
 )
 
+# Component / accessory tokens — same curated list as chapter 01. Real data has
+# many "rare-component → main-product" rules (topper → boxspringbett, ablage links
+# → schubkastenbett) that look asymmetric but are definitional. Filter them out.
+COMPONENT_TOKENS_05 = {
+    "aufpreis", "ablage", "aufsatz", "schublade", "schubkasten", "schubladenmodul",
+    "kissen", "steckkissen", "ruckenkissen", "armlehnkissen", "armlehnenkissen",
+    "nierenkissen", "klemmkissen",
+    "topper", "matratze",
+    "element", "elementaufnahme", "polsterelement",
+    "auszug", "auszugselement", "ansteckplatte", "tischverlangerung",
+    "fusshohe", "fussteil", "sitzauszug", "querschlafer",
+    "beleuchtungsset", "beleuchtung",
+    "panel", "boden", "einlegeboden",
+    "hakenleiste", "knopf",
+    "rollcontainer",
+    "sockel", "verlangerung",
+    "kopfteil", "kopfstutze",
+    "lattenrost",
+    "ruckenelement",
+    "ersatz", "ersatzteil", "zubehor", "zubehoer", "nachbestellung",
+    "deko",
+}
+simple["component_antecedent"] = simple["antecedent"].apply(
+    lambda n: bool(set(n.split()) & COMPONENT_TOKENS_05)
+)
+
 # Cross-sell view: the deployable subset (chapter 01, View 2).
 cross_sell = simple[
     ~simple["within_bundle"]
     & ~simple["substring_pair"]
+    & ~simple["component_antecedent"]
     & (simple["symmetry"] < 0.7)
     & (simple["lift"] >= 2)
 ].copy()

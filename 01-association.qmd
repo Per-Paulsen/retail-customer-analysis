@@ -149,9 +149,10 @@ Different stakeholders want different cuts of the same Apriori output. Cross-sel
 
 Signals computed:
 
-- **Reverse confidence + symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`. Symmetric pairs (≥ 0.7) are "you can't really have one without the other" (`bett ↔ matratze`). Asymmetric pairs are real cross-sell directionality.
+- **Reverse confidence + symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`. Symmetric pairs (≥ 0.7) are "you can't really have one without the other" (`bett ↔ matratze`). Asymmetric pairs *can* be real cross-sell, but on real-data they often turn out to be `rare-component → main-product` (e.g. `topper → boxspringbett`) — so asymmetry alone isn't enough.
 - **Within-bundle flag** — `bundle_group` of antecedent equals consequent's. Within-bundle = same product system.
 - **Substring relation** — antecedent name is a substring of consequent (or vice-versa). Catches definitional component-vs-whole pairs like `auszug` and `auszugselement` that bundle-tagging alone misses on real-data variants.
+- **Component-token flag** — antecedent contains a generic component/accessory token (`aufpreis`, `ablage`, `kissen`, `topper`, `aufsatz`, `element`, …). These items exist *only* as paired components of a main product — surfacing them as "cross-sell" would mislead. Curated list, real-data-derived.
 - **Conviction + leverage** — additional interest metrics already provided by `mlxtend.frequent_patterns.association_rules`. Lift > 2 is the baseline for "non-trivial".
 
 ```{python}
@@ -199,33 +200,70 @@ simple["substring_pair"] = simple.apply(
     lambda r: r["antecedent"] in r["consequent"] or r["consequent"] in r["antecedent"],
     axis=1,
 )
+
+# Component / accessory tokens — curated from real-data inspection. An item
+# whose name contains one of these tokens is a paired component of some main
+# product, not a stand-alone item. Cross-sell rules where the antecedent is
+# such a component (e.g. "topper -> boxspringbett") are definitional, not
+# behavioural, and get filtered from the cross-sell view.
+COMPONENT_TOKENS = {
+    "aufpreis", "ablage", "aufsatz", "schublade", "schubkasten", "schubladenmodul",
+    "kissen", "steckkissen", "ruckenkissen", "armlehnkissen", "armlehnenkissen",
+    "nierenkissen", "klemmkissen",
+    "topper", "matratze",  # mattress is a component of bed_system
+    "element", "elementaufnahme", "polsterelement",
+    "auszug", "auszugselement", "ansteckplatte", "tischverlangerung",
+    "fusshohe", "fussteil", "sitzauszug", "querschlafer",
+    "beleuchtungsset", "beleuchtung",
+    "panel", "boden", "einlegeboden",
+    "hakenleiste", "knopf",
+    "rollcontainer",
+    "sockel", "verlangerung",
+    "kopfteil", "kopfstutze",
+    "lattenrost",
+    "ruckenelement",
+    "ersatz", "ersatzteil", "zubehor", "zubehoer", "nachbestellung",
+    "deko",  # "deko element" -> bed
+}
+
+def has_component_token(name):
+    return bool(set(name.split()) & COMPONENT_TOKENS)
+
+simple["component_antecedent"] = simple["antecedent"].apply(has_component_token)
+
 print(f"Total simple rules:          {len(simple)}")
 print(f"  within-bundle:             {int(simple['within_bundle'].sum())}")
 print(f"  substring-pair:            {int(simple['substring_pair'].sum())}")
+print(f"  component-antecedent:      {int(simple['component_antecedent'].sum())}")
 print(f"  symmetric (≥ 0.7):         {int((simple['symmetry'] >= 0.7).sum())}")
 print(f"  lift ≥ 2 (non-trivial):    {int((simple['lift'] >= 2).sum())}")
 ```
 
 ### View 1 — Bundle composition
 
-*"Which items belong to the same product system?"* — useful for set-merchandising, "complete your set" UI, and inventory of complementary parts. We surface within-bundle *or* substring-related pairs, sorted by symmetry × lift so the strongest semantic pairings come out on top.
+*"Which items belong to the same product system?"* — useful for set-merchandising, "complete your set" UI, and inventory of complementary parts. We surface within-bundle, substring-related, *or* component-antecedent pairs, sorted by symmetry × lift so the strongest semantic pairings come out on top.
 
 ```{python}
 #| label: view-bundle-composition
 bundle_view = (
-    simple[(simple["within_bundle"]) | (simple["substring_pair"])]
+    simple[
+        (simple["within_bundle"])
+        | (simple["substring_pair"])
+        | (simple["component_antecedent"])
+    ]
     .assign(score=lambda d: d["symmetry"] * d["lift"])
     .sort_values("score", ascending=False)
 )
 bundle_view.head(15)[["antecedent", "consequent", "support", "confidence",
-                      "reverse_conf", "symmetry", "lift", "within_bundle", "substring_pair"]]\
+                      "reverse_conf", "symmetry", "lift",
+                      "within_bundle", "substring_pair", "component_antecedent"]]\
     .round({"support": 4, "confidence": 3, "reverse_conf": 3,
             "symmetry": 2, "lift": 2})
 ```
 
 ### View 2 — Cross-sell
 
-*"Which items pull in another item from a different system?"* — the deployable cross-sell-trigger list. Filter: cross-bundle (or no-bundle), no substring relation, asymmetric (`symmetry < 0.7`), lift ≥ 2.
+*"Which items pull in another item from a different system?"* — the deployable cross-sell-trigger list. Filter: cross-bundle (or no-bundle), no substring relation, antecedent is *not* a generic component/accessory token, asymmetric (`symmetry < 0.7`), lift ≥ 2.
 
 ```{python}
 #| label: view-cross-sell
@@ -233,6 +271,7 @@ cross_sell = (
     simple[
         ~simple["within_bundle"]
         & ~simple["substring_pair"]
+        & ~simple["component_antecedent"]
         & (simple["symmetry"] < 0.7)
         & (simple["lift"] >= 2)
     ]
@@ -248,11 +287,13 @@ These are the rules to wire into "you might also need" prompts at checkout / pag
 
 ### View 3 — Top insights (statistical strength regardless of class)
 
-*"What are the strongest patterns in the data, period?"* — for stakeholder reports. Sort by lift, annotate each rule with its bundle / substring class so the reader can interpret it correctly:
+*"What are the strongest patterns in the data, period?"* — for stakeholder reports. Sort by lift, annotate each rule with its bundle / substring / component class so the reader can interpret it correctly:
 
 ```{python}
 #| label: view-top-insights
 def classify(r):
+    if r["component_antecedent"]:
+        return "component → main (definitional)"
     if r["substring_pair"]:
         return "substring (definitional)"
     if r["within_bundle"]:
