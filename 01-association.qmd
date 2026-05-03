@@ -58,12 +58,14 @@ The 15 most-purchased products:
 
 ```{r}
 #| label: fig-item-frequency
-#| fig-cap: "Top 15 articles by basket appearance"
+#| fig-cap: "Top 15 articles by basket appearance. On real data the top items are often *generic* names ('esstisch', 'stuhl') rather than model-specific labels — see the data-quality note below."
 itemFrequencyPlot(trans, topN = 15, type = "absolute",
                   col = "steelblue", main = "")
 ```
 
 The leading items reflect what the catalog stocks at scale — typically chairs (bought in sets of 2/4/6 around tables), table-extension components, and core upholstered/storage items.
+
+**Data-quality note for the real-data render**: many of the dominant items in the chart are generic names — `esstisch`, `stuhl`, `eckgarnitur` — rather than model-specific labels (`esstisch ca 180 x 90 cm`, `esstisch cartago`). That's how the source system was filled in: salespeople often entered the basic Artikelbezeichnung and put model + size info into separate `Modell` / `Artikelnummer` fields. So the apparent concentration on a handful of generic items reflects how the catalogue was *recorded*, not how customers actually shopped — many distinct Cartago / Olivia / etc. variants sit underneath each generic label. Co-purchase rules at this level are still meaningful (chairs do go with tables, regardless of model), but model-level cross-sell ("Cartago-Esstisch zieht Cartago-Stuhl") is *not* what this view surfaces. For that you'd need to either pre-concatenate `article_name + model` (the `family_model` granularity from `docs/GRANULARITY_ANALYSIS.md`, ~5 300 items) or work at SKU level (`article_id`, ~3 500 items, used by chapter 08).
 
 ### Mining rules
 
