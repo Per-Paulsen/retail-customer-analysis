@@ -214,6 +214,12 @@ fig.show()
 
 ```{python}
 #| title: "BCG quadrant — share × growth"
+# Density-aware marker styling: small dataset (synth, ~40 items) keeps the
+# original look; large dataset (real, ~2,100 items) needs smaller faded
+# markers to keep cluster colours readable through overlap.
+_n_bcg = len(bcg_plot)
+_marker_size_bcg = 10 if _n_bcg < 100 else 5
+_marker_alpha_bcg = 0.85 if _n_bcg < 100 else 0.4
 fig = px.scatter(
     bcg_plot, x="share_t", y="growth_t", color="rank_str", hover_name="article_name",
     color_discrete_sequence=RANK_PALETTE,
@@ -224,13 +230,16 @@ fig = px.scatter(
 )
 fig.add_hline(y=bcg_plot["growth_t"].mean(), line_dash="dash", line_color="grey", opacity=0.5)
 fig.add_vline(x=bcg_plot["share_t"].mean(),  line_dash="dash", line_color="grey", opacity=0.5)
-fig.update_traces(marker=dict(size=10, opacity=0.85))
+fig.update_traces(marker=dict(size=_marker_size_bcg, opacity=_marker_alpha_bcg))
 fig.update_layout(margin=dict(l=20, r=20, t=20, b=20))
 fig.show()
 ```
 
 ```{python}
 #| title: "RFM 3D — recency × frequency × value"
+_n_rfm = len(rfm_articles_reset)
+_marker_size_rfm = 5 if _n_rfm < 100 else 3
+_marker_alpha_rfm = 0.85 if _n_rfm < 100 else 0.4
 fig = px.scatter_3d(
     rfm_articles_reset, x="recency", y="frequency", z="value",
     color="rank_str", hover_name="article_name",
@@ -239,7 +248,7 @@ fig = px.scatter_3d(
     labels={"recency": "Recency (mo)", "frequency": "Frequency",
             "value": "Value (EUR)", "rank_str": "Cluster rank"},
 )
-fig.update_traces(marker=dict(size=5, opacity=0.85))
+fig.update_traces(marker=dict(size=_marker_size_rfm, opacity=_marker_alpha_rfm))
 fig.update_layout(margin=dict(l=0, r=0, t=20, b=0), scene=dict(aspectmode="cube"))
 fig.show()
 ```

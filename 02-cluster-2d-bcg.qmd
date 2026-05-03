@@ -118,7 +118,7 @@ Heavy tails on share/growth would squash everything into one corner if plotted d
 
 ```{python}
 #| label: fig-bcg
-#| fig-cap: "Products positioned by transformed share × growth. Quadrants split at the data-driven mean of each axis. Cluster numbers are ranked: 1 = top performers, 4 = lagging."
+#| fig-cap: "Products positioned by transformed share × growth. Quadrants split at the data-driven mean of each axis. Cluster numbers are ranked: 1 = top performers, 4 = lagging. On real data (~2,100 products) only the top performers are annotated to keep the plot readable; all points are still in the cluster fit."
 def signed_cbrt(x):
     return np.sign(x) * np.cbrt(np.abs(x))
 
@@ -126,21 +126,33 @@ plot_df = period_rev.copy()
 plot_df["share_t"]  = signed_cbrt(plot_df["share"])
 plot_df["growth_t"] = signed_cbrt(plot_df["growth"])
 
+# Density-aware visual properties: small dataset (synth, 40 items) keeps the
+# original styling; large dataset (real, ~2,100 items) shrinks markers and
+# fades them so the cluster colours stay readable through overlap.
+n_items = len(plot_df)
+marker_size  = 80 if n_items < 100 else 20
+marker_alpha = 0.85 if n_items < 100 else 0.45
+n_top_share  = 8 if n_items < 100 else 20
+n_top_growth = 4 if n_items < 100 else 8
+
 fig, ax = plt.subplots(figsize=(9, 6))
 sns.scatterplot(
     data=plot_df, x="share_t", y="growth_t",
-    hue="rank", palette=RANK_PALETTE, s=80, ax=ax, legend="full",
+    hue="rank", palette=RANK_PALETTE, s=marker_size, alpha=marker_alpha,
+    ax=ax, legend="full",
 )
 ax.axhline(plot_df["growth_t"].mean(), color="grey", lw=0.8, ls="--")
 ax.axvline(plot_df["share_t"].mean(),  color="grey", lw=0.8, ls="--")
 
-# Annotate notable products
-for _, r in plot_df.nlargest(8, "share").iterrows():
+# Annotate the most informative points only — top by share (existing big
+# players) and top by growth (rising stars). On large catalogues annotating
+# everything would render the chart unreadable.
+for _, r in plot_df.nlargest(n_top_share, "share").iterrows():
     ax.annotate(r.name, (r["share_t"], r["growth_t"]),
-                xytext=(5, 5), textcoords="offset points", fontsize=8)
-for _, r in plot_df.nlargest(4, "growth").iterrows():
+                xytext=(5, 5), textcoords="offset points", fontsize=7)
+for _, r in plot_df.nlargest(n_top_growth, "growth").iterrows():
     ax.annotate(r.name, (r["share_t"], r["growth_t"]),
-                xytext=(5, 5), textcoords="offset points", fontsize=8, color="darkgreen")
+                xytext=(5, 5), textcoords="offset points", fontsize=7, color="darkgreen")
 
 ax.set_xlabel("Market share (signed cube-root)")
 ax.set_ylabel("Growth rate (signed cube-root)")
@@ -153,15 +165,18 @@ plt.show()
 
 ```{python}
 #| label: cluster-membership
+# Sort by revenue so the per-cluster members list shows the most relevant
+# items first instead of an alphabetical slice — important on real data
+# where each cluster can hold hundreds of items.
+period_rev_by_rev = period_rev.reset_index().sort_values("revenue", ascending=False)
 summary = (
-    period_rev
-    .reset_index()
+    period_rev_by_rev
     .groupby("rank")
     .agg(
         n_products=("article_name", "count"),
         mean_share=("share",  "mean"),
         mean_growth=("growth", "mean"),
-        members=("article_name", lambda s: ", ".join(sorted(s)[:6]) + ("…" if len(s) > 6 else "")),
+        members=("article_name", lambda s: ", ".join(s.iloc[:6]) + ("…" if len(s) > 6 else "")),
     )
     .reset_index()
     .sort_values("rank")
@@ -171,9 +186,9 @@ summary
 
 Reading the clusters in order:
 
-- **Rank 1 (top right)** — high share *and* growing. These are the products to amplify. Expect to see the growing categories we engineered: garden chairs/tables, ottoman, led_strip.
+- **Rank 1 (top right)** — high share *and* growing. These are the products to amplify.
 - **Rank 2 / 3** — mixed positions: high share + low growth (mature workhorses), or low share + high growth (rising bets).
-- **Rank 4 (bottom left)** — low share *and* shrinking. The declining articles (`filing_cabinet`, `dvd_player`) live here.
+- **Rank 4 (bottom left)** — low share *and* shrinking. End-of-life candidates.
 
 ## Deriving rules from the clusters
 

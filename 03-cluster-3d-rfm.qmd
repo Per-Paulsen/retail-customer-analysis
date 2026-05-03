@@ -110,7 +110,13 @@ Plotly gives us a rotatable, zoomable 3D scatter — much more useful than a sta
 
 ```{r}
 #| label: fig-3d-rfm
-#| fig-cap: "Interactive 3D RFM space. Drag to rotate, scroll to zoom, hover for product names. Cluster numbers are ranked: 1 = top performers (frequent, valuable, recent)."
+#| fig-cap: "Interactive 3D RFM space. Drag to rotate, scroll to zoom, hover for product names. Cluster numbers are ranked: 1 = top performers (frequent, valuable, recent). On real data (~2,100 products) markers shrink and fade automatically so the cluster colours stay readable through overlap."
+# Density-aware marker styling: small dataset (synth, ~40 items) keeps the
+# original look; large dataset (real, ~2,100 items) needs smaller faded
+# markers to keep the cluster colours readable through overlap.
+.marker_size    <- if (nrow(rfm) < 100) 6 else 3
+.marker_opacity <- if (nrow(rfm) < 100) 0.85 else 0.45
+
 plot_ly(
   rfm,
   x = ~recency, y = ~frequency, z = ~value,
@@ -124,7 +130,7 @@ plot_ly(
     "value: €%{z:,.0f}<extra></extra>"
   ),
   type = "scatter3d", mode = "markers",
-  marker = list(size = 6, opacity = 0.85)
+  marker = list(size = .marker_size, opacity = .marker_opacity)
 ) |>
   layout(
     scene = list(
