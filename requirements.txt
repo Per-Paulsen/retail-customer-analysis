@@ -12,6 +12,7 @@ mlxtend>=0.23
 lifetimes>=0.11
 lifelines>=0.30
 statsmodels>=0.14
+pmdarima>=2.0
 
 # Notebook tooling
 jupyter>=1.0

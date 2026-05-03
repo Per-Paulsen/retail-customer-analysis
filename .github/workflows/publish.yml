@@ -54,6 +54,8 @@ jobs:
             rpart
             rpart.plot
             patchwork
+            cluster
+            tibble
             knitr
             reticulate
 

@@ -66,22 +66,49 @@ Most articles have very recent last sales — the data window ends at the refere
 
 ## How many clusters?
 
+Two methodological points before fitting:
+
+1. **Log-transform `frequency` and `value`** (the heavy-tailed columns) before standardising. RFM is the classic textbook example of "always log-transform monetary value" — a few high-revenue items can otherwise pull cluster centroids towards the right tail and the boundaries land in the wrong place. We use `log1p` (= `log(1+x)`) which handles zero values gracefully. Recency stays linear (months are not heavy-tailed).
+2. **Validate k with silhouette score** in addition to the elbow — same logic as chapter 02. Higher = better, ≥ 0.5 is "clear structure".
+
 ```{r}
 #| label: fig-elbow
-#| fig-cap: "Elbow plot — within-cluster sum of squares as a function of k. We use k=4 to mirror the four-tier RFM segmentation convention; the elbow on synthetic data lines up with that choice, on real data the curve is smoother and the choice is framework-driven."
-features <- scale(rfm[, c("frequency", "recency", "value")])
+#| fig-cap: "Left: elbow on within-cluster SS. Right: silhouette score per k (higher = better, ≥ 0.5 = clear structure). Cluster fitting on log-transformed frequency + value (then standardised), recency linear — robust to the heavy revenue tail typical of retail item-level RFM."
+# Drop articles whose total revenue is non-positive — refund/Gutschrift
+# artifacts that net to <= 0. log1p(-) is NaN, which would crash kmeans.
+.n_nonpos <- sum(rfm$value <= 0)
+if (.n_nonpos > 0) {
+  cat(sprintf("Dropped %d articles with non-positive total revenue (refunds netting to <= 0)\n",
+              .n_nonpos))
+  rfm <- rfm |> filter(value > 0)
+}
+rfm$log_frequency <- log1p(rfm$frequency)
+rfm$log_value     <- log1p(rfm$value)
+features <- scale(rfm[, c("log_frequency", "recency", "log_value")])
 
-inertias <- sapply(1:10, function(k) {
-  kmeans(features, centers = k, nstart = 10)$tot.withinss
+ks <- 2:10
+inertias    <- sapply(ks, function(k) kmeans(features, centers = k, nstart = 10)$tot.withinss)
+silhouettes <- sapply(ks, function(k) {
+  km <- kmeans(features, centers = k, nstart = 10)
+  mean(cluster::silhouette(km$cluster, dist(features))[, "sil_width"])
 })
 
-ggplot(data.frame(k = 1:10, ss = inertias), aes(k, ss)) +
+p_elbow <- ggplot(data.frame(k = ks, ss = inertias), aes(k, ss)) +
   geom_line() + geom_point(size = 2) +
-  scale_x_continuous(breaks = 1:10) +
-  labs(x = "Number of clusters", y = "Within-cluster SS")
+  scale_x_continuous(breaks = ks) +
+  labs(x = "Number of clusters", y = "Within-cluster SS", title = "Elbow")
+p_sil <- ggplot(data.frame(k = ks, sil = silhouettes), aes(k, sil)) +
+  geom_line(color = "darkorange") + geom_point(size = 2, color = "darkorange") +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "grey") +
+  geom_hline(yintercept = 0.2, linetype = "dotted",  color = "grey") +
+  scale_x_continuous(breaks = ks) +
+  labs(x = "Number of clusters", y = "Silhouette score", title = "Silhouette")
+p_elbow + p_sil
+
+cat(sprintf("Silhouette at k=4: %.3f\n", silhouettes[which(ks == 4)]))
 ```
 
-We use **k = 4** to give a four-tier segmentation (R1–R4 / F1–F4 / M1–M4-style ranks). On synthetic data the bend lines up cleanly with k=4, on real data the choice is framework-driven (consistent four-tier story across BCG and RFM) rather than purely data-driven.
+We use **k = 4** to give a four-tier segmentation (R1–R4 / F1–F4 / M1–M4-style ranks). On synthetic data the bend lines up cleanly with k=4, on real data the choice is framework-driven (consistent four-tier story across BCG and RFM) — the silhouette score then tells us how clean the resulting separation actually is.
 
 ## Fit and rank clusters
 
@@ -91,17 +118,18 @@ K <- 4
 fit <- kmeans(features, centers = K, nstart = 25)
 rfm$cluster <- fit$cluster
 
-# Rank clusters: higher value & frequency, lower recency = better
+# Rank clusters: higher (log-)value & (log-)frequency, lower recency = better.
+# Centres are in z-space (after scale()) so weights add directly.
 centers <- as.data.frame(fit$centers) |>
   tibble::rowid_to_column("cluster") |>
-  mutate(weight = (frequency + value - recency) / 3) |>
+  mutate(weight = (log_frequency + log_value - recency) / 3) |>
   arrange(desc(weight)) |>
   mutate(rank = row_number())
 
 rfm <- rfm |>
   left_join(centers |> select(cluster, rank), by = "cluster")
 
-centers |> select(cluster, rank, recency, frequency, value, weight) |> round(3)
+centers |> select(cluster, rank, recency, log_frequency, log_value, weight) |> round(3)
 ```
 
 ## The 3D view

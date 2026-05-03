@@ -91,7 +91,91 @@ print(f"Control repurchase rate:  {control_rate:.3f}")
 print(f"Naive ATE:                {ate_naive:+.4f}  (95% CI: [{ci[0]:+.3f}, {ci[1]:+.3f}])")
 ```
 
-The 95% confidence interval straddles zero — *we cannot detect any causal effect of the first-purchase discount on whether customers come back*. That's the right answer for our generator, which doesn't link these two variables. With real data, you might find a small positive effect (discounts attract price-sensitive returning customers), or a negative effect (discounted customers skew toward bargain-hunters who don't return at full prices), or nothing — only the data tells you.
+The 95% confidence interval straddles zero — *we cannot detect any causal effect of the first-purchase discount on whether customers come back*. That's the right answer for our synthetic generator, which doesn't link these two variables. On real data the naive ATE is *biased* whenever discounts aren't random — which they typically aren't (loyalty programs, end-of-season clearance, salesperson discretion). The next two blocks fix that.
+
+## Covariate balance — does the naive ATE need correction?
+
+Before trusting the naive ATE we check whether treated and control customers actually *look the same* on the covariates we observe. On a randomised assignment the means should match within sampling noise; a meaningful difference is the signature of confounding.
+
+```{python}
+#| label: balance-check
+covariates = ["first_basket_value", "first_n_items"]
+
+balance = pd.DataFrame({
+    "covariate": covariates,
+    "mean_treated":  [data.loc[data["first_had_discount"] == 1, c].mean() for c in covariates],
+    "mean_control":  [data.loc[data["first_had_discount"] == 0, c].mean() for c in covariates],
+})
+balance["abs_diff"] = (balance["mean_treated"] - balance["mean_control"]).abs()
+balance["std_diff"] = balance["abs_diff"] / data[covariates].std().values  # standardised difference
+print(balance.round(3).to_string(index=False))
+print()
+print("Standardised difference > 0.1 typically considered 'imbalanced' (Austin 2009).")
+print("On synth-data we expect ~0; on real-data with targeted discounts the diff will be larger.")
+```
+
+## Doubly-robust ATE — propensity weighting + outcome model (AIPW)
+
+The naive ATE treats all customers as exchangeable. When the treatment isn't randomised, that's biased — discounts may go to customers who would (or wouldn't) come back anyway. The fix is the **augmented inverse propensity-weighted (AIPW) estimator** (Robins, Rotnitzky & Zhao 1994), also known as the doubly-robust ATE: it combines a *propensity-score model* `e(x) = P(T=1 | x)` with an *outcome model* `μ_t(x) = E[Y | T=t, x]`. The DR property: as long as *one* of the two models is correctly specified, the ATE estimate is unbiased.
+
+```{python}
+#| label: dr-ate
+from sklearn.linear_model import LogisticRegression
+from sklearn.model_selection import cross_val_predict
+
+# Build feature matrix (same covariates as the meta-learners further down,
+# but built here so this block can stand on its own).
+data_dr = pd.get_dummies(data, columns=["first_top_dept"], drop_first=True, dtype=int)
+feat_cols_dr = (
+    ["first_basket_value", "first_n_items"]
+    + [c for c in data_dr.columns if c.startswith("first_top_dept_")]
+)
+X_dr = data_dr[feat_cols_dr].values
+T_dr = data_dr["first_had_discount"].values
+Y_dr = data_dr["came_back"].values
+
+# Cross-fitted propensity score e(x) = P(T=1|x) — clipped so AIPW is stable
+prop_clf = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+e_hat = cross_val_predict(prop_clf, X_dr, T_dr, cv=5, method="predict_proba")[:, 1]
+e_hat = np.clip(e_hat, 0.05, 0.95)
+
+# Cross-fitted outcome models μ_0, μ_1
+mu1_clf = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+mu0_clf = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)
+mu1_hat = cross_val_predict(mu1_clf, X_dr[T_dr == 1], Y_dr[T_dr == 1], cv=5,
+                             method="predict_proba")[:, 1]
+mu0_hat = cross_val_predict(mu0_clf, X_dr[T_dr == 0], Y_dr[T_dr == 0], cv=5,
+                             method="predict_proba")[:, 1]
+# Re-predict on the full set with each base learner
+mu1_full = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)\
+              .fit(X_dr[T_dr == 1], Y_dr[T_dr == 1]).predict_proba(X_dr)[:, 1]
+mu0_full = LogisticRegression(max_iter=1000, random_state=RANDOM_STATE)\
+              .fit(X_dr[T_dr == 0], Y_dr[T_dr == 0]).predict_proba(X_dr)[:, 1]
+
+# AIPW pseudo-outcomes
+psi = (mu1_full - mu0_full
+       + T_dr * (Y_dr - mu1_full) / e_hat
+       - (1 - T_dr) * (Y_dr - mu0_full) / (1 - e_hat))
+ate_dr = psi.mean()
+ate_dr_se = psi.std(ddof=1) / np.sqrt(len(psi))
+ate_dr_ci = (ate_dr - 1.96 * ate_dr_se, ate_dr + 1.96 * ate_dr_se)
+
+# IPW-only (no outcome model — for comparison)
+ipw = T_dr * Y_dr / e_hat - (1 - T_dr) * Y_dr / (1 - e_hat)
+ate_ipw = ipw.mean()
+ate_ipw_se = ipw.std(ddof=1) / np.sqrt(len(ipw))
+ate_ipw_ci = (ate_ipw - 1.96 * ate_ipw_se, ate_ipw + 1.96 * ate_ipw_se)
+
+print(f"Propensity score range: [{e_hat.min():.3f}, {e_hat.max():.3f}]")
+print()
+print(f"Naive ATE        : {ate_naive:+.4f}  (95% CI: [{ci[0]:+.3f}, {ci[1]:+.3f}])")
+print(f"IPW ATE          : {ate_ipw:+.4f}  (95% CI: [{ate_ipw_ci[0]:+.3f}, {ate_ipw_ci[1]:+.3f}])")
+print(f"Doubly-robust ATE: {ate_dr:+.4f}  (95% CI: [{ate_dr_ci[0]:+.3f}, {ate_dr_ci[1]:+.3f}])")
+```
+
+**Reading this**: on synthetic data with random discounts, all three estimators should agree (within sampling noise). When they do, that's evidence the naive ATE is fine here. On real data with targeted discounts, the naive ATE will typically *disagree* with IPW / DR — and DR is the one to trust, because of the doubly-robust property. We surface all three so the disagreement is visible.
+
+The methods below (T- and S-learner CATE) are *prediction* models — they estimate the per-customer treatment effect. The propensity-corrected DR-style equivalent (DR-learner, Kennedy 2020) is more involved and we don't include it here; for a CATE-with-confounding setting `econml.dr.LinearDRLearner` is the standard tool, with its known Python-3.14 wheel-build issues.
 
 ## Per-customer uplift — meta-learners
 

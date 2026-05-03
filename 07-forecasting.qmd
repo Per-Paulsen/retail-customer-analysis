@@ -19,6 +19,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.holtwinters import ExponentialSmoothing, SimpleExpSmoothing
+import pmdarima as pm
 
 sns.set_theme(style="whitegrid")
 ```
@@ -79,15 +80,20 @@ The two-year window covers 1.5 seasonal cycles. That's the smallest amount on wh
 | **Naive (last value)** | "Tomorrow looks like today" | Default benchmark; surprisingly hard to beat for short horizons |
 | **Seasonal Naive** | "This month equals same month last year" | When seasonal pattern dominates noise |
 | **Exponential Smoothing (ETS, no seasonality)** | Smooth trend, no seasonal component | When you have trend but too little data for seasonality |
-| **SARIMA(1,1,1)(1,1,1,12)** | Trend + seasonality with autoregressive structure | When you have ≥ 2 seasonal cycles and enough data to fit 6 params |
+| **Auto-ARIMA** (`pmdarima.auto_arima`) | (S)ARIMA order chosen per series via stepwise AIC search | When the order isn't known a priori — replaces a hand-picked SARIMA(1,1,1)(1,1,1,12) so each category can pick its own degrees of differencing and AR/MA orders |
 
-We deliberately *don't* try Holt-Winters with seasonality at this point: with only 1.5 seasonal cycles in training, it almost always fails to converge. Knowing what *not* to fit is part of the discipline.
+We deliberately *don't* try Holt-Winters with seasonality at this point: with only ~1.5 seasonal cycles in training it almost always fails to converge. Knowing what *not* to fit is part of the discipline.
+
+**Why Auto-ARIMA instead of a fixed order?** Hand-picking SARIMA(1,1,1)(1,1,1,12) for *every* category assumes the same dynamics across categories — clearly wrong: high-volume bedroom items behave differently from outdoor seasonals. Auto-ARIMA does a stepwise AIC search per series and lets each category pick its own (p, d, q)(P, D, Q)[m]. Standard practice in modern forecasting; saves the analyst from baking in a wrong assumption.
 
 ## Evaluation strategy
 
-Forecast horizon **3 months** (last quarter of the data). This leaves 21 months of training — short, but at least it gets us close to two seasonal cycles.
+Two evaluation passes:
 
-We report two metrics per category:
+1. **Single 3-month holdout** (per category) — quick view of how each model would do "if we deployed today and forecast next quarter". Reported as MAE in EUR + MAPE per category × model.
+2. **Rolling-origin cross-validation** — re-fit on growing training windows ending at each of the last 6 months, predict the next 3 months, average the errors. Standard practice in time series forecasting (Hyndman & Athanasopoulos, *Forecasting: Principles and Practice*) — much more robust than a single holdout. Reported as the average MAE across the rolls.
+
+We report two metrics:
 
 - **MAE in EUR** — absolute error in monetary terms. Stable on low-volume series.
 - **MAPE** — error as percentage of actual. Easy to compare across categories *but* explodes when actuals are small (a €1k category with €500 error has MAPE 50%; same error on €100k category is 0.5%).
@@ -96,15 +102,20 @@ We report two metrics per category:
 #| label: backtest
 HORIZON = 3
 
-def fit_predict(train, horizon):
-    """train: numpy array of training values."""
+def fit_predict(train, horizon, return_intervals=False):
+    """train: numpy array. Returns dict model_name -> point forecast Series.
+    If return_intervals=True, also returns lower/upper 80%-CI for Auto-ARIMA."""
     out = {}
+    intervals = {}
 
     # Naive: last train value, repeated
     out["Naive"] = pd.Series([train[-1]] * horizon, index=range(horizon))
 
     # Seasonal naive: same month last year (12 months back from each holdout step)
-    out["Seasonal naive"] = pd.Series(train[-12:-12 + horizon], index=range(horizon))
+    if len(train) >= 12 + horizon:
+        out["Seasonal naive"] = pd.Series(train[-12:-12 + horizon], index=range(horizon))
+    else:
+        out["Seasonal naive"] = pd.Series([np.nan] * horizon, index=range(horizon))
 
     # ETS without seasonality (just trend smoothing)
     try:
@@ -114,15 +125,24 @@ def fit_predict(train, horizon):
     except Exception:
         out["ETS (no seasonal)"] = pd.Series([np.nan] * horizon, index=range(horizon))
 
-    # SARIMA(1,1,1)(1,1,1,12)
+    # Auto-ARIMA — stepwise search picks (p,d,q)(P,D,Q)[12] per series
     try:
-        sarima = SARIMAX(train, order=(1, 1, 1),
-                         seasonal_order=(1, 1, 1, 12)).fit(disp=False)
-        out["SARIMA"] = pd.Series(sarima.forecast(horizon).values, index=range(horizon))
+        m_season = 12 if len(train) >= 24 else 1   # seasonality only with ≥ 2 cycles
+        m = pm.auto_arima(
+            train, seasonal=(m_season > 1), m=m_season,
+            stepwise=True, suppress_warnings=True, error_action="ignore",
+            max_p=3, max_q=3, max_P=1, max_Q=1,
+        )
+        if return_intervals:
+            yhat, conf = m.predict(horizon, return_conf_int=True, alpha=0.20)  # 80% CI
+            out["Auto-ARIMA"] = pd.Series(yhat, index=range(horizon))
+            intervals["Auto-ARIMA"] = (conf[:, 0], conf[:, 1])
+        else:
+            out["Auto-ARIMA"] = pd.Series(m.predict(horizon), index=range(horizon))
     except Exception:
-        out["SARIMA"] = pd.Series([np.nan] * horizon, index=range(horizon))
+        out["Auto-ARIMA"] = pd.Series([np.nan] * horizon, index=range(horizon))
 
-    return out
+    return (out, intervals) if return_intervals else out
 
 
 def metrics(actual, pred):
@@ -135,20 +155,52 @@ def metrics(actual, pred):
     return mae, mape
 
 
+# --- Single 3-month holdout per category ---
 rows = []
 forecasts_per_cat = {}
 for cat in totals.index:
     s = monthly[monthly["product_group"] == cat].set_index("month")["revenue"].asfreq("MS")
     train, test = s.iloc[:-HORIZON], s.iloc[-HORIZON:]
 
-    preds = fit_predict(train.values, HORIZON)
-    forecasts_per_cat[cat] = {"train": train, "test": test, "preds": preds}
+    preds, intervals = fit_predict(train.values, HORIZON, return_intervals=True)
+    forecasts_per_cat[cat] = {"train": train, "test": test, "preds": preds,
+                              "intervals": intervals}
 
     for model, p in preds.items():
         mae, mape = metrics(test.values, p.values)
         rows.append({"category": cat, "model": model, "MAE_EUR": mae, "MAPE_%": mape})
 
 backtest = pd.DataFrame(rows)
+```
+
+### Rolling-origin cross-validation
+
+Single-holdout MAE depends on which three months happened to land in the test set. Rolling-origin CV refits the model on each of the last `N_ROLLS` training-window endpoints, predicts the next `HORIZON` months, and averages — giving a much steadier error estimate per model.
+
+```{python}
+#| label: rolling-cv
+N_ROLLS = 6   # last 6 different training-window endpoints
+
+cv_rows = []
+for cat in totals.index:
+    s = monthly[monthly["product_group"] == cat].set_index("month")["revenue"].asfreq("MS")
+    n = len(s)
+    if n < 12 + HORIZON + N_ROLLS:
+        continue  # not enough history for CV
+    for offset in range(N_ROLLS):
+        end = n - HORIZON - offset
+        train_cv = s.iloc[:end]
+        test_cv  = s.iloc[end:end + HORIZON]
+        preds_cv = fit_predict(train_cv.values, HORIZON, return_intervals=False)
+        for model, p in preds_cv.items():
+            mae, _ = metrics(test_cv.values, p.values)
+            cv_rows.append({"category": cat, "model": model, "roll": offset, "MAE_EUR": mae})
+
+cv = pd.DataFrame(cv_rows)
+cv_summary = cv.groupby("model")["MAE_EUR"].agg(["mean", "std", "count"]).round(0)
+cv_summary.columns = ["mean MAE (EUR)", "std MAE (EUR)", "n_evaluations"]
+print("Rolling-origin CV — average MAE per model across all categories × rolls:")
+print(cv_summary.sort_values("mean MAE (EUR)").to_string())
 ```
 
 ## Per-category results
@@ -159,7 +211,7 @@ pivoted_mae = backtest.pivot(index="category", columns="model", values="MAE_EUR"
 pivoted_mape = backtest.pivot(index="category", columns="model", values="MAPE_%").round(1)
 
 # Order columns sensibly
-order = ["Naive", "Seasonal naive", "ETS (no seasonal)", "SARIMA"]
+order = ["Naive", "Seasonal naive", "ETS (no seasonal)", "Auto-ARIMA"]
 pivoted_mae = pivoted_mae[order]
 pivoted_mape = pivoted_mape[order]
 
@@ -183,7 +235,7 @@ A few patterns emerge:
 
 - **Naive (last value)** is shockingly competitive on short horizons. With 3 months of forecast, last-month-anchored prediction often beats more sophisticated models — a classic finding in the forecasting literature.
 - **Seasonal naive** wins on categories with clearer annual seasonality (garden / outdoor goods, dining items around holiday months).
-- **SARIMA** sometimes overfits the limited training history and produces worse-than-naive forecasts.
+- **Auto-ARIMA** sometimes overfits the limited training history and produces worse-than-naive forecasts. The stepwise AIC search picks the best order *for the training period*, which on short series is not necessarily the best order *for the future*.
 - **MAPE** is misleading for the smallest categories — a 100% MAPE on STOR (low-volume storage) is a few thousand euros of error, not a forecasting catastrophe.
 
 ## Granularity matters — Department vs. Category
@@ -243,21 +295,28 @@ We don't reconcile here (the ~24-month window is too thin to demonstrate it well
 
 ```{python}
 #| label: fig-forecast-compare
-#| fig-cap: "Forecast vs. actual on the last three months for the three highest-volume categories. Light bands = the actual; lines = each model's prediction."
+#| fig-cap: "Forecast vs. actual on the last three months for the three highest-volume categories. Black points = the actual; coloured lines = each model's point forecast. The red shaded band is the Auto-ARIMA 80 % prediction interval — reading inventory decisions off point forecasts alone hides that the truth could land anywhere inside this band."
 top_cats = totals.index[:3].tolist()
 fig, axes = plt.subplots(1, 3, figsize=(13, 4), sharey=False)
 
 for ax, cat in zip(axes, top_cats):
     ctx = forecasts_per_cat[cat]
     train, test = ctx["train"], ctx["test"]
+    intervals = ctx.get("intervals", {})
 
     # Plot trailing 12 months of train + actual
     train_tail = train.iloc[-12:]
     ax.plot(train_tail.index, train_tail.values, color="lightgrey", lw=2, label="History")
     ax.plot(test.index, test.values, color="black", marker="o", lw=2, label="Actual")
 
+    # Auto-ARIMA prediction interval shaded
+    if "Auto-ARIMA" in intervals:
+        lo, hi = intervals["Auto-ARIMA"]
+        ax.fill_between(test.index, lo, hi, color="#c0392b", alpha=0.15,
+                        label="Auto-ARIMA 80% CI")
+
     colors = {"Naive": "#3498db", "Seasonal naive": "#27ae60",
-              "ETS (no seasonal)": "#f39c12", "SARIMA": "#c0392b"}
+              "ETS (no seasonal)": "#f39c12", "Auto-ARIMA": "#c0392b"}
     for model, p in ctx["preds"].items():
         if np.isnan(p.values).any():
             continue
@@ -267,7 +326,7 @@ for ax, cat in zip(axes, top_cats):
     ax.set_title(cat)
     ax.tick_params(axis="x", rotation=30)
     if cat == top_cats[0]:
-        ax.legend(fontsize=8, loc="upper left")
+        ax.legend(fontsize=7, loc="upper left")
         ax.set_ylabel("Revenue (EUR)")
 
 plt.tight_layout()
@@ -279,21 +338,21 @@ plt.show()
 The takeaway from forecasting research over the last 40 years (M-competitions, Makridakis et al.) is consistent: on short horizons with little history, simple models are *frequently better than ML/deep learning*. Three reasons play out in this dataset:
 
 1. **Bias-variance** — sophisticated models have many parameters. With 21 months of training, parameter estimates are noisy. Naive has zero parameters; it can't overfit.
-2. **No exogenous regressors** — we forecast on revenue alone. SARIMA and ETS have nothing to cling to except the autocorrelation in the series, which is weak with monthly retail data.
+2. **No exogenous regressors** — we forecast on revenue alone. ARIMA-class models and ETS have nothing to cling to except the autocorrelation in the series, which is weak with monthly retail data.
 3. **Heterogeneity** — 10 categories, each with its own dynamic. A single model class often doesn't fit all of them; per-category model selection (or hierarchical pooling) helps a lot but needs more data than we have.
 
 For *this* dataset, the right operational approach would be:
 
 - **Use seasonal naive as the production baseline** — it captures the dominant signal (annual cyclicality) with zero training time.
-- **Reserve SARIMA / ETS for categories where they clearly outperform** — measure per category, switch only on persistent improvement.
-- **Don't trust point forecasts blindly** — even the best model here has 20–40% MAPE. Plan inventory with prediction intervals (`SARIMAX.get_forecast(...).conf_int()`) to express the true uncertainty.
+- **Reserve Auto-ARIMA / ETS for categories where they clearly outperform** — measure per category × roll, switch only on persistent improvement (rolling-origin CV captures this).
+- **Don't trust point forecasts blindly** — plan inventory with prediction intervals (the Auto-ARIMA panels in *Forecast vs. actual* below show 80 % CIs as shaded bands) to express the true uncertainty.
 
 ## Limitations
 
 - **~24 months is genuinely too few** for confident seasonal modeling. In production, you'd want 3–5 years.
 - **Synthetic data has no embedded seasonality**. Our generator produces uniform-in-time transactions modulo trend; real retail has strong holiday peaks (Christmas, Easter, summer for outdoor) that would make seasonal models far more useful than they appear here.
 - **Cross-category dependencies aren't modeled**. Hierarchical / multivariate models (e.g. VAR, hierarchical reconciliation in `hierarchicalforecast`) would exploit shared structure across categories.
-- **Point forecasts only**. Real forecasting work always reports prediction intervals; we skipped them for brevity but `SARIMAX.get_forecast(steps).conf_int()` provides them out-of-the-box.
+- **Single 80 % CI per Auto-ARIMA**. The plot shows the Auto-ARIMA-derived interval; the naive / seasonal-naive / ETS panels would also benefit from interval reporting (e.g. via the residual-bootstrap approach), which we don't show here.
 
 ## How this chapter fits the rest
 

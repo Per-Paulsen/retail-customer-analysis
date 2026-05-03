@@ -13,7 +13,8 @@ if (!dir.exists(user_lib)) {
 .libPaths(c(user_lib, .libPaths()))
 
 needed <- c("readr","dplyr","arules","arulesViz","ggplot2",
-            "plotly","rpart","rpart.plot","knitr","reticulate")
+            "plotly","rpart","rpart.plot","knitr","reticulate",
+            "cluster","patchwork","tibble")
 already <- rownames(installed.packages())
 to_install <- setdiff(needed, already)
 

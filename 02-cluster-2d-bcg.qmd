@@ -71,28 +71,53 @@ plt.tight_layout()
 plt.show()
 ```
 
-## Choosing k — elbow method
+## Choosing k — elbow + silhouette
 
-We standardize both features and run k-means for several values of *k*, plotting the within-cluster sum of squares:
+Two methodological points we get right here:
+
+1. **Cluster on the *transformed* features, not the raw ones.** Both `share` and `growth` are heavy-tailed in retail data — a few products dominate share, a few have explosive growth. K-means is distance-based; on raw heavy-tailed features the centroids get pulled toward the outliers and the cluster boundaries land in the wrong place. Standard fix: a variance-stabilising transform before scaling. We use a **signed cube-root** (handles both signs of growth, finite at zero, doesn't require strictly-positive data the way log does).
+
+2. **Validate k with silhouette score, not just elbow.** The elbow is a visual heuristic; silhouette score (Rousseeuw 1987) is a quantitative cluster-quality measure on `[-1, +1]` — higher is better, ≥ 0.5 typically considered "good", around 0.2–0.5 "weak structure". We plot both and pick k informed by both signals — but with the BCG framework constraint that k=4 maps onto the four quadrants.
 
 ```{python}
-#| label: fig-elbow
-#| fig-cap: "Elbow plot — within-cluster sum of squares as a function of k. The classic BCG framework distinguishes four quadrants (Stars / Cash Cows / Question Marks / Dogs); we use k=4 for that mapping. Whether the elbow visually agrees depends on the data: synth has a clean bend at k=4, real-data is usually less sharply elbowed and the choice of k=4 is then framework-driven, not data-driven."
-features = period_rev[["growth", "share"]].values
-X = StandardScaler().fit_transform(features)
+#| label: fig-elbow-silhouette
+#| fig-cap: "Left: elbow on within-cluster sum of squares (lower is tighter). Right: silhouette score per k (higher is better, ≥ 0.5 = clear structure). Cluster fitting is on signed-cbrt-transformed share + growth (then standardised) — robust to the heavy tails that retail share/growth produce on real data."
+from sklearn.metrics import silhouette_score
 
-ks = range(1, 11)
-inertias = [
-    KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10).fit(X).inertia_
-    for k in ks
-]
-fig, ax = plt.subplots(figsize=(7, 4))
-ax.plot(list(ks), inertias, marker="o")
-ax.set_xlabel("k"); ax.set_ylabel("Within-cluster SS")
+def signed_cbrt(x):
+    return np.sign(x) * np.cbrt(np.abs(x))
+
+# Transform first, then standardise. Cluster fitting will use this X for the
+# rest of the chapter — both the chosen-k fit and the visualisation.
+features_t = np.column_stack([
+    signed_cbrt(period_rev["growth"].values),
+    signed_cbrt(period_rev["share"].values),
+])
+X = StandardScaler().fit_transform(features_t)
+
+ks = range(2, 11)
+inertias = []
+silhouettes = []
+for k in ks:
+    km_k = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=10).fit(X)
+    inertias.append(km_k.inertia_)
+    silhouettes.append(silhouette_score(X, km_k.labels_))
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+axes[0].plot(list(ks), inertias, marker="o")
+axes[0].set_xlabel("k"); axes[0].set_ylabel("Within-cluster SS"); axes[0].set_title("Elbow")
+axes[1].plot(list(ks), silhouettes, marker="o", color="darkorange")
+axes[1].axhline(0.5, color="grey", ls="--", lw=0.8, label="0.5 (clear structure)")
+axes[1].axhline(0.2, color="grey", ls=":",  lw=0.8, label="0.2 (weak structure)")
+axes[1].set_xlabel("k"); axes[1].set_ylabel("Silhouette score"); axes[1].set_title("Silhouette")
+axes[1].legend(fontsize=8)
+plt.tight_layout()
 plt.show()
+
+print(f"Silhouette at k=4: {silhouettes[ks.index(4) - ks.start]:.3f}")
 ```
 
-We use **k = 4** to map onto the four BCG quadrants. On synthetic data the elbow lines up cleanly with that choice; on real data the curve is often smoother and the k=4 decision becomes framework-driven (we want exactly four tiers for executive reporting) rather than purely data-driven.
+We use **k = 4** to map onto the four BCG quadrants. On synthetic data the elbow lines up cleanly with that choice and silhouette is reasonable; on real data the curves are typically smoother — the choice becomes framework-driven (we want exactly four tiers for executive reporting) rather than purely data-driven, and the silhouette tells us how clean the resulting separation actually is. A weak silhouette is itself useful information: it says "yes there are tiers, but the boundaries are fuzzy", which a stakeholder needs to know.
 
 ## Fit the clusters
 
@@ -102,7 +127,8 @@ K = 4
 km = KMeans(n_clusters=K, random_state=RANDOM_STATE, n_init=10).fit(X)
 period_rev["cluster"] = km.labels_
 
-# Rank clusters by a simple "value" weight = ½·share + ½·growth (both standardized)
+# Rank clusters by a simple "value" weight = ½·share + ½·growth (both
+# transformed + standardised, so on the same scale)
 centers = pd.DataFrame(km.cluster_centers_, columns=["growth_z", "share_z"])
 centers["weight"] = 0.5 * centers["growth_z"] + 0.5 * centers["share_z"]
 centers["rank"]   = centers["weight"].rank(ascending=False).astype(int)
@@ -114,14 +140,11 @@ period_rev[["share", "growth", "cluster", "rank"]].sort_values("rank").head()
 
 ## The BCG plot
 
-Heavy tails on share/growth would squash everything into one corner if plotted directly. We apply a signed cube-root transform for the visualization (clustering is still on the raw scaled features):
+Same signed-cube-root transform we already used for clustering — visualising on the same coordinates the cluster algorithm actually saw, so the quadrant lines and cluster boundaries stay consistent:
 
 ```{python}
 #| label: fig-bcg
-#| fig-cap: "Products positioned by transformed share × growth. Quadrants split at the data-driven mean of each axis. Cluster numbers are ranked: 1 = top performers, 4 = lagging. On real data (~2,100 products) only the top performers are annotated to keep the plot readable; all points are still in the cluster fit."
-def signed_cbrt(x):
-    return np.sign(x) * np.cbrt(np.abs(x))
-
+#| fig-cap: "Products positioned by transformed share × growth (same coordinates the clustering used). Quadrants split at the data-driven mean of each axis. Cluster numbers are ranked: 1 = top performers, 4 = lagging. On real data (~2,100 products) only the top performers are annotated to keep the plot readable; all points are still in the cluster fit."
 plot_df = period_rev.copy()
 plot_df["share_t"]  = signed_cbrt(plot_df["share"])
 plot_df["growth_t"] = signed_cbrt(plot_df["growth"])
