@@ -122,7 +122,7 @@ The diagonal cluster shows products that are robust across both lenses — these
 
 ## Co-purchase rules — which apply to *top* products?
 
-We use only the **actionable** rules from chapter 01 here — the ones that survived the bundle / symmetry triage. Definitional pairs (`bed ↔ mattress`, `headboard ↔ bed`) are filtered out so they don't pollute the cross-sell list.
+We use the **cross-sell view** from chapter 01 here — cross-bundle, asymmetric, lift ≥ 2 — so within-system plumbing (`bett ↔ matratze`) and substring-definitional pairs (`auszugselement → auszug`) don't pollute the cross-sell list.
 
 ```{python}
 #| label: rules-top
@@ -144,8 +144,8 @@ simple = rules[
 simple["antecedent"] = simple["antecedents"].apply(lambda s: next(iter(s)))
 simple["consequent"] = simple["consequents"].apply(lambda s: next(iter(s)))
 
-# Apply triage — same logic as chapter 01 (accessory + symmetry from raw baskets)
-ACCESSORY_ITEMS = {"headboard", "nightstand", "table_extension"}
+# Annotate with the same signals as chapter 01: reverse-conf, symmetry,
+# within-bundle, substring-pair. Then filter to the cross-sell view.
 bundle_lookup = (
     df.drop_duplicates("article_name").set_index("article_name")["bundle_group"]
       .fillna("").to_dict()
@@ -172,25 +172,33 @@ simple["within_bundle"] = simple.apply(
               and bundle_lookup.get(r["antecedent"], "") != "",
     axis=1,
 )
-simple["accessory_to_primary"] = (
-    simple["antecedent"].isin(ACCESSORY_ITEMS) & simple["within_bundle"]
+simple["substring_pair"] = simple.apply(
+    lambda r: r["antecedent"] in r["consequent"] or r["consequent"] in r["antecedent"],
+    axis=1,
 )
-simple = simple[~simple["accessory_to_primary"] & (simple["symmetry"] < 0.7)].copy()
+
+# Cross-sell view: the deployable subset (chapter 01, View 2).
+cross_sell = simple[
+    ~simple["within_bundle"]
+    & ~simple["substring_pair"]
+    & (simple["symmetry"] < 0.7)
+    & (simple["lift"] >= 2)
+].copy()
 
 # Annotate with BCG / RFM rank of the consequent
-simple["consequent_bcg"] = simple["consequent"].map(products["bcg_rank"])
-simple["consequent_rfm"] = simple["consequent"].map(products["rfm_rank"])
+cross_sell["consequent_bcg"] = cross_sell["consequent"].map(products["bcg_rank"])
+cross_sell["consequent_rfm"] = cross_sell["consequent"].map(products["rfm_rank"])
 
 # Rules where the consequent is a top product (BCG=1 OR RFM=1)
 top_rules = (
-    simple[(simple["consequent_bcg"] == 1) | (simple["consequent_rfm"] == 1)]
+    cross_sell[(cross_sell["consequent_bcg"] == 1) | (cross_sell["consequent_rfm"] == 1)]
     .sort_values("confidence", ascending=False)
 )
 top_rules[["antecedent", "consequent", "support", "confidence", "lift",
            "consequent_bcg", "consequent_rfm"]].head(8).round(3)
 ```
 
-Rules that *push customers toward* top-tier products are the highest-leverage ones for cross-sell prompts: customers buying the antecedent are 5–10× more likely than chance to buy the (already-strong) consequent. Easy upsell.
+Rules that *push customers toward* top-tier products are the highest-leverage ones for cross-sell prompts: customers buying the antecedent are several times more likely than chance to buy the (already-strong) consequent. Easy upsell.
 
 ## Customer concentration — quantifying the Pareto
 
@@ -232,8 +240,11 @@ top10_share = top10_products["value"].sum() / total_revenue
 bottom_overlap = products[(products["bcg_rank"] == 4) & (products["rfm_rank"] == 4)]
 bottom_revenue_share = bottom_overlap["value"].sum() / total_revenue
 
-# --- Top association rule: missed cross-sell sizing ---
-top_rule = simple.iloc[0]
+# --- Top cross-sell rule: missed cross-sell sizing ---
+# Use the cross-sell view (cross-bundle, asymmetric, lift >= 2), sorted by
+# confidence — same logic as chapter 01's View 2.
+top_cross_sell = cross_sell.sort_values("confidence", ascending=False)
+top_rule = top_cross_sell.iloc[0]
 ant, con = top_rule["antecedent"], top_rule["consequent"]
 basket_sets = df.groupby("transaction_id")["article_name"].apply(set)
 ant_baskets = basket_sets[basket_sets.apply(lambda s: ant in s)]

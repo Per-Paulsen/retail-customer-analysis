@@ -103,14 +103,40 @@ SCHEMA_ORDER: list[str] = [
     "discount_type", "discount_amount", "discount_percentage", "discount_reason",
 ]
 
-# Article-name patterns → bundle_group. Matched against the lowercased,
-# accent-stripped Artikelbezeichnung.
+# Article-name patterns → bundle_group. Matched against the accent-stripped,
+# lowercased Artikelbezeichnung. Order matters (first match wins) — bedroom
+# components match before dining (so Nachtkommode lands in bed_system, not
+# in any storage_system).
+#
+# These patterns identify which items belong to the same product *system* —
+# components that legitimately co-purchase as part of one decision (a bed +
+# its mattress + slatted frame). Used by 01-association's bundle-composition
+# view to surface within-system pairs and by the cross-sell view to filter
+# them out.
+#
+# IMPORTANT: this only tags the bundle_group column. article_name itself is
+# not affected — we keep real product granularity (~2,100 light-normalised
+# variants) and use bundle_group as an orthogonal classification.
 BUNDLE_PATTERNS: list[tuple[str, str]] = [
-    (r"\b(bett|matratze|kopfteil|nachttisch|nachtkonsole|lattenrost)\b", "bed_system"),
-    (r"\b(esstisch|stuhl|vitrine|sideboard|anrichte|ansteckplatte|auszug)\b", "dining_system"),
-    (r"\b(kuechentisch|kuechenstuhl|barhocker|hocker.*kueche)\b", "kitchen_system"),
-    (r"\b(schreibtisch|buerostuhl|buecherregal|aktenschrank)\b", "office_system"),
-    (r"\b(garten|gartentisch|gartenstuhl|sonnenschirm|liege.*garten|outdoor)\b", "garden_system"),
+    # bed system — bed, mattress, frame, headboard, nightstand, related accessories
+    (r"\b(bett|matratze|kopfteil|nachttisch|nachtkonsole|lattenrost|nako|bettkasten|bettwasche|bettwaesche|schaummatratze)\b",
+     "bed_system"),
+    # dining system — table, chairs, extensions, vitrines, anrichte, sideboard
+    (r"\b(esstisch|stuhl|freischwinger|schwinger|vitrine|sideboard|anrichte|ansteckplatte|auszug|auszugselement|tischverlangerung|baumtisch)\b",
+     "dining_system"),
+    # kitchen
+    (r"\b(kuechentisch|kuechenstuhl|barhocker)\b",
+     "kitchen_system"),
+    # office
+    (r"\b(schreibtisch|buerostuhl|buecherregal|aktenschrank|sekretaer|rollcontainer)\b",
+     "office_system"),
+    # garden / outdoor
+    (r"\b(garten|gartentisch|gartenstuhl|sonnenschirm|liege.*garten|gartenliege|outdoor|parasol)\b",
+     "garden_system"),
+    # upholstered system — sofa, sessel, eckgarnitur and their typical paired
+    # components (akku for massage chairs, kopfstutze, kissen variants)
+    (r"\b(sofa|sessel|garnitur|eckgarnitur|schlafsofa|sitzer|polster|polsterecke|ecksofa|ohrenbackensessel|ohrensessel|kopfstutze|akku|armlehnkissen|nierenkissen|klemmkissen)\b",
+     "upholstered_system"),
 ]
 
 # Fallback name → department, used when Warengruppe code is missing.

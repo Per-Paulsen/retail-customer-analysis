@@ -63,7 +63,7 @@ itemFrequencyPlot(trans, topN = 15, type = "absolute",
                   col = "steelblue", main = "")
 ```
 
-`dining_chair` leads — exactly as designed: chairs are bought in sets of 2/4/6 and they ride along on every dining-table purchase.
+The leading items reflect what the catalog stocks at scale — typically chairs (bought in sets of 2/4/6 around tables), table-extension components, and core upholstered/storage items.
 
 ### Mining rules
 
@@ -77,18 +77,25 @@ cat("Total rules found:", length(rules), "\n")
 
 Apriori returns hundreds of rules at this threshold. Sorting by confidence puts the most reliable ones first — but the very top is dominated by *complex* rules of the form `{A, B, C, D} ⇒ E`. These are technically high-confidence (often 100%) but cover so few baskets that they're noisy.
 
+A second source of clutter is **subsumption**: many rules are redundant restatements of stronger rules. `arules::is.redundant()` is the canonical filter — it removes a rule whenever a more general rule (a strict subset of its antecedent leading to the same consequent) has equal-or-better confidence. Standard Apriori-postprocessing since the early 2000s.
+
+```{r}
+#| label: redundancy-filter
+non_redundant <- rules[!is.redundant(rules)]
+cat("After arules::is.redundant() filter:",
+    length(non_redundant), "of", length(rules), "rules remain\n")
+```
+
 The headline patterns are the **simple** rules: one item on the left, one on the right.
 
 ```{r}
 #| label: simple-rules-r
-simple <- subset(rules, size(rules) == 2)
+simple <- subset(non_redundant, size(non_redundant) == 2)
 simple_sorted <- sort(simple, by = "confidence", decreasing = TRUE)
 inspect(head(simple_sorted, 10))
 ```
 
-These are *all* simple rules sorted by confidence — including the definitional ones (`bed ⇒ mattress`, `headboard ⇒ bed`) that aren't really insights. The Python section below applies a **triage filter** (symmetry + accessory tag) that separates actionable rules from definitional plumbing. The raw output here is intentionally unfiltered for the R/Python comparison; the curated headline view is in the next section.
-
-Confidence range across the 8 simple rules: ~53–81%. Lift range: 3–14×. The strongest pairs co-occur 4–10× more often than chance — but as we'll see, "co-occurs more than chance" isn't the same as "is a useful cross-sell prompt".
+These are *all* simple rules sorted by confidence — including the definitional ones that aren't really insights. The Python section below adds richer interest measures (lift, conviction, leverage), substring-relation annotation, and **three separate views** on the same rule set — bundle composition, cross-sell, and top-insights — which is what stakeholders actually consume.
 
 ### What about the complex rules?
 
@@ -136,19 +143,19 @@ rules = association_rules(
 print(f"Total rules found: {len(rules)}")
 ```
 
-### Triage before display — separating insight from plumbing
+### Annotating each rule for downstream views
 
-A naive sort by confidence puts rules like `bed → mattress` and `headboard → bed` at the top. Those are textbook *definitional* relationships — bed components sell as a system; customers don't really choose between buying-the-mattress-or-not. But not every within-bundle pair is plumbing: `dining_table → dining_chair` is also within-bundle yet behaviorally meaningful — chairs are bought without tables (existing tables, replacements, sets) but tables almost never without chairs.
+Different stakeholders want different cuts of the same Apriori output. Cross-sell teams want pairs across product systems. Bundle-/set-merchandising wants pairs *within* the same product system. A management report wants the statistically strongest patterns regardless of category. Instead of one "actionable" filter we annotate every rule with the signals each view needs, then pick.
 
-The right filter combines two signals:
+Signals computed:
 
-- **Symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`, computed from raw basket data so we can read both directions even when one falls below the apriori threshold. Symmetric rules (≥ 0.7) are pairs you can't have one without the other (`bed ↔ mattress`).
-- **Accessory marker** — a small curated set of items that exist *only* as accessories of a primary product (`headboard`, `nightstand`, `table_extension`). A rule from one of these into its bundle's primary product is structural plumbing.
-
-Rules that fail both filters — neither symmetric nor accessory-to-primary — are the ones a stakeholder should see.
+- **Reverse confidence + symmetry score** — `min(conf(A→B), conf(B→A)) / max(...)`. Symmetric pairs (≥ 0.7) are "you can't really have one without the other" (`bett ↔ matratze`). Asymmetric pairs are real cross-sell directionality.
+- **Within-bundle flag** — `bundle_group` of antecedent equals consequent's. Within-bundle = same product system.
+- **Substring relation** — antecedent name is a substring of consequent (or vice-versa). Catches definitional component-vs-whole pairs like `auszug` and `auszugselement` that bundle-tagging alone misses on real-data variants.
+- **Conviction + leverage** — additional interest metrics already provided by `mlxtend.frequent_patterns.association_rules`. Lift > 2 is the baseline for "non-trivial".
 
 ```{python}
-#| label: simple-and-triage
+#| label: annotate-rules
 is_simple = (rules["antecedents"].apply(len) == 1) & (rules["consequents"].apply(len) == 1)
 simple = (
     rules.loc[is_simple]
@@ -156,11 +163,11 @@ simple = (
         antecedent=lambda d: d["antecedents"].apply(lambda s: next(iter(s))),
         consequent=lambda d: d["consequents"].apply(lambda s: next(iter(s))),
     )
-    [["antecedent", "consequent", "support", "confidence", "lift"]]
+    [["antecedent", "consequent", "support", "confidence", "lift",
+      "leverage", "conviction"]]
     .reset_index(drop=True)
 )
 
-ACCESSORY_ITEMS = {"headboard", "nightstand", "table_extension"}
 bundle_lookup = (
     df.drop_duplicates("article_name").set_index("article_name")["bundle_group"]
       .fillna("").to_dict()
@@ -188,50 +195,89 @@ simple["within_bundle"] = simple.apply(
               and bundle_lookup.get(r["antecedent"], "") != "",
     axis=1,
 )
-simple["accessory_to_primary"] = (
-    simple["antecedent"].isin(ACCESSORY_ITEMS) & simple["within_bundle"]
+simple["substring_pair"] = simple.apply(
+    lambda r: r["antecedent"] in r["consequent"] or r["consequent"] in r["antecedent"],
+    axis=1,
 )
-
-def classify(row):
-    if row["accessory_to_primary"]:
-        return "definitional (accessory → primary)"
-    if row["symmetry"] >= 0.7:
-        return "definitional (symmetric pair)"
-    return "actionable"
-
-simple["triage"] = simple.apply(classify, axis=1)
-
-print("Rules by triage class:")
-for cls, n in simple["triage"].value_counts().items():
-    print(f"  {cls:40s} {n}")
+print(f"Total simple rules:          {len(simple)}")
+print(f"  within-bundle:             {int(simple['within_bundle'].sum())}")
+print(f"  substring-pair:            {int(simple['substring_pair'].sum())}")
+print(f"  symmetric (≥ 0.7):         {int((simple['symmetry'] >= 0.7).sum())}")
+print(f"  lift ≥ 2 (non-trivial):    {int((simple['lift'] >= 2).sum())}")
 ```
 
-### Top *actionable* rules — the headline
+### View 1 — Bundle composition
 
-These are the rules a stakeholder should see. Cross-bundle, asymmetric: one product genuinely drives purchase of another:
+*"Which items belong to the same product system?"* — useful for set-merchandising, "complete your set" UI, and inventory of complementary parts. We surface within-bundle *or* substring-related pairs, sorted by symmetry × lift so the strongest semantic pairings come out on top.
 
 ```{python}
-#| label: actionable-rules
-actionable = simple[simple["triage"] == "actionable"].sort_values("confidence", ascending=False)
-actionable.head(10)[["antecedent", "consequent", "support", "confidence", "lift",
-                     "reverse_conf", "symmetry"]]\
-    .round({"support": 4, "confidence": 3, "lift": 2, "reverse_conf": 3, "symmetry": 2})
+#| label: view-bundle-composition
+bundle_view = (
+    simple[(simple["within_bundle"]) | (simple["substring_pair"])]
+    .assign(score=lambda d: d["symmetry"] * d["lift"])
+    .sort_values("score", ascending=False)
+)
+bundle_view.head(15)[["antecedent", "consequent", "support", "confidence",
+                      "reverse_conf", "symmetry", "lift", "within_bundle", "substring_pair"]]\
+    .round({"support": 4, "confidence": 3, "reverse_conf": 3,
+            "symmetry": 2, "lift": 2})
 ```
 
-These are deployable cross-sell triggers — exactly the rules to wire into "you might also need" prompts at checkout.
+### View 2 — Cross-sell
 
-### Plumbing — for transparency only
-
-For completeness, the rules we filtered out as definitional. They're correct rules; they're just not insights:
+*"Which items pull in another item from a different system?"* — the deployable cross-sell-trigger list. Filter: cross-bundle (or no-bundle), no substring relation, asymmetric (`symmetry < 0.7`), lift ≥ 2.
 
 ```{python}
-#| label: plumbing-rules
-plumbing = simple[simple["triage"] != "actionable"].sort_values("confidence", ascending=False)
-plumbing.head(10)[["antecedent", "consequent", "confidence", "reverse_conf", "symmetry", "triage"]]\
-    .round({"confidence": 3, "reverse_conf": 3, "symmetry": 2})
+#| label: view-cross-sell
+cross_sell = (
+    simple[
+        ~simple["within_bundle"]
+        & ~simple["substring_pair"]
+        & (simple["symmetry"] < 0.7)
+        & (simple["lift"] >= 2)
+    ]
+    .sort_values("confidence", ascending=False)
+)
+cross_sell.head(15)[["antecedent", "consequent", "support", "confidence",
+                     "lift", "leverage", "conviction"]]\
+    .round({"support": 4, "confidence": 3, "lift": 2,
+            "leverage": 4, "conviction": 2})
 ```
 
-Notice that the symmetric pairs (`bed ↔ mattress`, `headboard ↔ bed`) and within-bundle relationships are exactly what we'd expect: you can't have a bed without a mattress, customers who buy a headboard are buying a bed. The triage doesn't *throw out* this information — it just files it correctly as catalog plumbing rather than discovered insight.
+These are the rules to wire into "you might also need" prompts at checkout / page-view / POS scan — antecedent demand pulls in a paired product from a different category.
+
+### View 3 — Top insights (statistical strength regardless of class)
+
+*"What are the strongest patterns in the data, period?"* — for stakeholder reports. Sort by lift, annotate each rule with its bundle / substring class so the reader can interpret it correctly:
+
+```{python}
+#| label: view-top-insights
+def classify(r):
+    if r["substring_pair"]:
+        return "substring (definitional)"
+    if r["within_bundle"]:
+        if r["symmetry"] >= 0.7:
+            return "within-bundle (symmetric)"
+        return "within-bundle (asymmetric)"
+    if r["symmetry"] >= 0.7:
+        return "symmetric (cross-bundle)"
+    return "cross-sell (asymmetric)"
+
+simple["class"] = simple.apply(classify, axis=1)
+top_insights = simple.sort_values("lift", ascending=False)
+top_insights.head(20)[["antecedent", "consequent", "support", "confidence",
+                       "lift", "conviction", "class"]]\
+    .round({"support": 4, "confidence": 3, "lift": 2, "conviction": 2})
+```
+
+```{python}
+#| label: class-distribution
+print("Distribution of all simple rules across classes:")
+for cls, n in simple["class"].value_counts().items():
+    print(f"  {cls:35s} {n}")
+```
+
+The class distribution is itself diagnostic: a healthy retail dataset has a substantial cross-sell tail (true behavioural signal), but also legitimate bundle/substring pairs (catalog plumbing). The three views above let you pick the right cut for the question at hand instead of forcing one filter to fit all three jobs.
 
 ```{python}
 #| label: fig-rules-python
@@ -267,4 +313,4 @@ For exploratory work and visualization the R toolkit wins; for embedding into a 
 
 ## Takeaway
 
-The Apriori algorithm recovers the engineered co-purchase patterns cleanly in both languages. For a real retailer these rules drive concrete decisions: *which products to display together, what to bundle, what to suggest as upsell at checkout.* Practically: `dining_table` shoppers should never leave the store without seeing chairs, and the bed display should sit next to the mattress and nightstand sections.
+Apriori finds raw co-purchase patterns; the work that turns those into decisions is in the postprocessing — redundancy filtering (`is.redundant`), interest measures beyond confidence (lift, conviction, leverage), and splitting the output into the views that map onto actual stakeholder questions: bundle composition, cross-sell triggers, and statistically strongest patterns. The same Apriori-run answers all three; the difference is in *which rules each view surfaces*, not in re-running the algorithm with different thresholds.

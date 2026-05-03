@@ -116,10 +116,40 @@ simple = rules[
 ].copy()
 simple["antecedent"] = simple["antecedents"].apply(lambda s: next(iter(s)))
 simple["consequent"] = simple["consequents"].apply(lambda s: next(iter(s)))
-simple = simple.sort_values("confidence", ascending=False).reset_index(drop=True)
 
-top_rule_str = f"{simple.iloc[0]['antecedent']} → {simple.iloc[0]['consequent']}"
-top_rule_conf = simple.iloc[0]["confidence"]
+# Annotate + filter to the cross-sell view (chapter 01, View 2): cross-bundle,
+# asymmetric, lift >= 2 — drop within-system plumbing and substring-pairs.
+bundle_lookup_db = (
+    df.drop_duplicates("article_name").set_index("article_name")["bundle_group"]
+      .fillna("").to_dict()
+)
+basket_sets_db = df.groupby("transaction_id")["article_name"].apply(set).tolist()
+
+def cond_prob_db(a, b):
+    n_b = sum(1 for s in basket_sets_db if b in s)
+    return 0.0 if n_b == 0 else sum(1 for s in basket_sets_db if a in s and b in s) / n_b
+
+simple["reverse_conf"] = simple.apply(
+    lambda r: cond_prob_db(r["antecedent"], r["consequent"]), axis=1)
+simple["symmetry"] = simple.apply(
+    lambda r: (min(r["confidence"], r["reverse_conf"]) /
+               max(r["confidence"], r["reverse_conf"]))
+        if max(r["confidence"], r["reverse_conf"]) > 0 else 0.0, axis=1)
+simple["within_bundle"] = simple.apply(
+    lambda r: bundle_lookup_db.get(r["antecedent"], "") == bundle_lookup_db.get(r["consequent"], "")
+              and bundle_lookup_db.get(r["antecedent"], "") != "", axis=1)
+simple["substring_pair"] = simple.apply(
+    lambda r: r["antecedent"] in r["consequent"] or r["consequent"] in r["antecedent"], axis=1)
+
+cross_sell = simple[
+    ~simple["within_bundle"]
+    & ~simple["substring_pair"]
+    & (simple["symmetry"] < 0.7)
+    & (simple["lift"] >= 2)
+].sort_values("confidence", ascending=False).reset_index(drop=True)
+
+top_rule_str = f"{cross_sell.iloc[0]['antecedent']} → {cross_sell.iloc[0]['consequent']}"
+top_rule_conf = cross_sell.iloc[0]["confidence"]
 
 # --- CLV --------------------------------------------------------------------
 tx = df.groupby(["customer_id", "transaction_id", "date"], as_index=False)["gross_price"].sum()
@@ -293,8 +323,8 @@ fig.show()
 ## Row
 
 ```{python}
-#| title: "Top simple rules (one antecedent → one consequent)"
-display_rules = simple.head(15).copy()
+#| title: "Top cross-sell rules (cross-bundle, asymmetric, lift ≥ 2)"
+display_rules = cross_sell.head(15).copy()
 display_rules["support"]    = display_rules["support"].round(4)
 display_rules["confidence"] = display_rules["confidence"].round(3)
 display_rules["lift"]       = display_rules["lift"].round(2)
