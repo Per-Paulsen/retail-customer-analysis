@@ -10,6 +10,10 @@ The methodology behind it is honest about its origin: **the checks here were add
 #| label: setup
 import numpy as np
 import pandas as pd
+# Pandas display: render full DataFrame width in chapter outputs.
+pd.options.display.max_columns = None
+pd.options.display.width = 200
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 

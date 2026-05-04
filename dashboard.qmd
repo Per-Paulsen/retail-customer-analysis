@@ -15,6 +15,10 @@ format:
 #| context: setup
 import numpy as np
 import pandas as pd
+# Pandas display: render full DataFrame width in chapter outputs.
+pd.options.display.max_columns = None
+pd.options.display.width = 200
+
 import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio

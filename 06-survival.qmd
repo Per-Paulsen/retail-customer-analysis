@@ -14,6 +14,10 @@ Survival analysis is the right tool because the data is *right-censored*: many c
 #| label: setup
 import numpy as np
 import pandas as pd
+# Pandas display: render full DataFrame width in chapter outputs.
+pd.options.display.max_columns = None
+pd.options.display.width = 200
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 from lifelines import KaplanMeierFitter, CoxPHFitter

@@ -121,6 +121,10 @@ The same analysis with the standard Python stack:
 ```{python}
 #| label: apriori-python
 import pandas as pd
+# Pandas display: render full DataFrame width in chapter outputs.
+pd.options.display.max_columns = None
+pd.options.display.width = 200
+
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori, association_rules
 
@@ -313,6 +317,7 @@ top_per_class = (
     simple.sort_values("lift", ascending=False)
           .groupby("class").head(5)
           .sort_values(["class", "lift"], ascending=[True, False])
+          .reset_index(drop=True)
 )
 top_per_class[["class", "antecedent", "consequent", "support", "confidence",
                "lift", "conviction"]]\
