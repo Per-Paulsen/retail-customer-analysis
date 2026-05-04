@@ -289,9 +289,9 @@ cross_sell.head(15)[["antecedent", "consequent", "support", "confidence",
 
 These are the rules to wire into "you might also need" prompts at checkout / page-view / POS scan — antecedent demand pulls in a paired product from a different category.
 
-### View 3 — Top insights (statistical strength regardless of class)
+### View 3 — Top insights, stratified by class
 
-*"What are the strongest patterns in the data, period?"* — for stakeholder reports. Sort by lift, annotate each rule with its bundle / substring / component class so the reader can interpret it correctly:
+*"What are the strongest patterns in the data, period?"* — for stakeholder reports. A single global "top-N by lift" list isn't useful: definitional pairs (component → main, substring) have extreme lifts (often 100×+) and would dominate the head of the list, hiding cross-sell and within-bundle signal. We stratify instead — **top-5 per class** sorted by lift — so the reader sees the strongest representative of *each* relationship type.
 
 ```{python}
 #| label: view-top-insights
@@ -309,9 +309,13 @@ def classify(r):
     return "cross-sell (asymmetric)"
 
 simple["class"] = simple.apply(classify, axis=1)
-top_insights = simple.sort_values("lift", ascending=False)
-top_insights.head(20)[["antecedent", "consequent", "support", "confidence",
-                       "lift", "conviction", "class"]]\
+top_per_class = (
+    simple.sort_values("lift", ascending=False)
+          .groupby("class").head(5)
+          .sort_values(["class", "lift"], ascending=[True, False])
+)
+top_per_class[["class", "antecedent", "consequent", "support", "confidence",
+               "lift", "conviction"]]\
     .round({"support": 4, "confidence": 3, "lift": 2, "conviction": 2})
 ```
 
