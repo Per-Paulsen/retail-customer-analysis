@@ -121,13 +121,27 @@ def fit_predict(train, horizon, return_intervals=False):
     else:
         out["Seasonal naive"] = pd.Series([np.nan] * horizon, index=range(horizon))
 
-    # ETS without seasonality (just trend smoothing)
+    # ETS without seasonality (just trend smoothing). Real-data series with
+    # zero or near-zero months can break trend="add"; fall back to plain
+    # SimpleExpSmoothing (level only) if the trended fit refuses to converge.
+    # Note: statsmodels >= 0.14 removed the `disp` kwarg from .fit() — passing
+    # it raises TypeError, which is why an earlier version of this code
+    # silently produced all-NaN ETS forecasts.
+    # ets.forecast / ses.forecast already returns a numpy array in current
+    # statsmodels — no .values needed (the previous code raised AttributeError
+    # silently inside the try/except, so ETS was always NaN).
     try:
         ets = ExponentialSmoothing(train, trend="add", seasonal=None,
-                                   initialization_method="estimated").fit(disp=False)
-        out["ETS (no seasonal)"] = pd.Series(ets.forecast(horizon).values, index=range(horizon))
+                                   initialization_method="estimated").fit()
+        out["ETS (no seasonal)"] = pd.Series(np.asarray(ets.forecast(horizon)),
+                                             index=range(horizon))
     except Exception:
-        out["ETS (no seasonal)"] = pd.Series([np.nan] * horizon, index=range(horizon))
+        try:
+            ses = SimpleExpSmoothing(train, initialization_method="estimated").fit()
+            out["ETS (no seasonal)"] = pd.Series(np.asarray(ses.forecast(horizon)),
+                                                 index=range(horizon))
+        except Exception:
+            out["ETS (no seasonal)"] = pd.Series([np.nan] * horizon, index=range(horizon))
 
     # Auto-ARIMA — stepwise search picks (p,d,q)(P,D,Q)[12] per series
     try:
@@ -155,7 +169,14 @@ def metrics(actual, pred):
     if np.isnan(pred_arr).any():
         return np.nan, np.nan
     mae = float(np.mean(np.abs(actual_arr - pred_arr)))
-    mape = float(np.mean(np.abs((actual_arr - pred_arr) / actual_arr))) * 100
+    # MAPE is undefined when actual=0 (real-data months with zero revenue
+    # produce inf). Restrict to actual>0 entries; if none, MAPE is NaN.
+    nonzero = actual_arr != 0
+    if nonzero.any():
+        mape = float(np.mean(np.abs((actual_arr[nonzero] - pred_arr[nonzero])
+                                    / actual_arr[nonzero]))) * 100
+    else:
+        mape = np.nan
     return mae, mape
 
 
