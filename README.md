@@ -1,6 +1,6 @@
 # Retail Customer & Basket Analysis
 
-End-to-end product and customer analytics on a synthetic two-year retail transaction dataset, mixing classic and modern techniques across R and Python — from market basket analysis and BCG/RFM segmentation through probabilistic CLV to survival, forecasting, embeddings, and causal uplift.
+End-to-end product and customer analytics on a synthetic two-year retail transaction dataset, mixing classic and modern techniques across R and Python: from market basket analysis and BCG/RFM segmentation through probabilistic CLV to survival, forecasting, embeddings, and causal uplift.
 
 The full analysis is published as a [Quarto](https://quarto.org) website that mixes both languages in a single project. There's also a one-page **dashboard view** with KPI cards and tabbed visualizations, and a standalone Python notebook that replays the RFM analysis in Colab.
 
@@ -14,18 +14,18 @@ The full analysis is published as a [Quarto](https://quarto.org) website that mi
 
 | Chapter | Language | Tools | Output |
 |---|---|---|---|
-| [00 — Data Audit](00-data-audit.qmd) | Python | pandas | Catalog hygiene flags, bundle tagging, triage framework |
-| [01 — Association Rules](01-association.qmd) | R + Python | `arules`, `arulesViz`, `mlxtend` | Apriori rules at sup ≥ 0.001, conf ≥ 0.5 + bundle/symmetry triage |
-| [02 — BCG Clustering](02-cluster-2d-bcg.qmd) | Python | `scikit-learn`, `seaborn` | k-means quadrants on share × growth |
-| [03 — RFM Clustering](03-cluster-3d-rfm.qmd) | R | `kmeans`, `plotly`, `rpart` | 3D segmentation + decision tree |
-| [04 — Customer Lifetime Value](04-clv-bgnbd.qmd) | Python | `lifetimes` (BG/NBD + Gamma-Gamma) | Per-customer CLV + P(alive), holdout-validated |
-| [06 — Survival Analysis](06-survival.qmd) | Python | `lifelines` (Kaplan-Meier + Cox PH) | Time-to-first-repeat curves, hazard ratios |
-| [07 — Demand Forecasting](07-forecasting.qmd) | Python | `statsmodels` (naive, ETS, SARIMA) | Per-category monthly revenue forecasts with backtest |
-| [08 — Product Embeddings](08-embeddings.qmd) | Python | `scikit-learn` (PPMI × SVD) | Per-item embeddings, substitution lookup, t-SNE |
-| [09 — Causal Uplift](09-causal-uplift.qmd) | Python | `scikit-learn` (T/S meta-learners) | Per-customer CATE, naive ATE, injection sanity check |
-| [05 — Insights](05-insights.qmd) | Python | Cross-method synthesis | Recommendations + headline findings |
+| [00: Data Audit](00-data-audit.qmd) | Python | pandas | Catalog hygiene flags, bundle tagging, triage framework |
+| [01: Association Rules](01-association.qmd) | R + Python | `arules`, `arulesViz`, `mlxtend` | Apriori rules at sup ≥ 0.001, conf ≥ 0.5 + bundle/symmetry triage |
+| [02: BCG Clustering](02-cluster-2d-bcg.qmd) | Python | `scikit-learn`, `seaborn` | k-means quadrants on share × growth |
+| [03: RFM Clustering](03-cluster-3d-rfm.qmd) | R | `kmeans`, `plotly`, `rpart` | 3D segmentation + decision tree |
+| [04: Customer Lifetime Value](04-clv-bgnbd.qmd) | Python | `lifetimes` (BG/NBD + Gamma-Gamma) | Per-customer CLV + P(alive), holdout-validated |
+| [06: Survival Analysis](06-survival.qmd) | Python | `lifelines` (Kaplan-Meier + Cox PH) | Time-to-first-repeat curves, hazard ratios |
+| [07: Demand Forecasting](07-forecasting.qmd) | Python | `statsmodels` (naive, ETS, SARIMA) | Per-category monthly revenue forecasts with backtest |
+| [08: Product Embeddings](08-embeddings.qmd) | Python | `scikit-learn` (PPMI × SVD) | Per-item embeddings, substitution lookup, t-SNE |
+| [09: Causal Uplift](09-causal-uplift.qmd) | Python | `scikit-learn` (T/S meta-learners) | Per-customer CATE, naive ATE, injection sanity check |
+| [05: Insights](05-insights.qmd) | Python | Cross-method synthesis | Recommendations + headline findings |
 | [Dashboard](dashboard.qmd) | Python | Quarto Dashboard, plotly | KPI tiles + tabbed visual explorer |
-| [Notebook — RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
+| [Notebook: RFM in Python](notebooks/rfm_clustering.ipynb) | Python | `scikit-learn`, `plotly` | Self-contained, Colab-ready |
 
 For the project's methodological roadmap and notes on lower-priority deferred items, see [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
@@ -53,23 +53,23 @@ Prerequisites: Python ≥ 3.10, R ≥ 4.5, [Quarto](https://quarto.org/docs/get-
 
 ## A note on iterative refinement
 
-The chapters are not in the order they were originally written. **Chapter 00 (Data Audit)** and the bundle-tagging machinery were added *after* a first analytical pass surfaced findings that experienced retail analysts would catch in the first ten seconds — products that didn't belong in the catalog (`dvd_player` in a furniture store), and association rules that were definitionally true rather than behaviorally interesting (`bed → mattress`).
+The chapters are not in the order they were originally written. **Chapter 00 (Data Audit)** and the bundle-tagging machinery were added *after* a first analytical pass surfaced findings that experienced retail analysts would catch in the first ten seconds, products that didn't belong in the catalog (`dvd_player` in a furniture store), and association rules that were definitionally true rather than behaviorally interesting (`bed → mattress`).
 
-Adding those checks upstream — turning "the analysis says delist this" into "the catalog audit identified this as already end-of-life" — is iterative refinement, not retroactive cleanup. Real analytical work always involves the loop: first pass, notice the obvious issues, add the appropriate filter, re-run. Showing the iteration here, with the audit chapter explicit and the triage framework documented in chapter 05, is more honest than pretending the workflow was pristine from the first commit.
+Adding those checks upstream, turning "the analysis says delist this" into "the catalog audit identified this as already end-of-life", is iterative refinement, not retroactive cleanup. Real analytical work always involves the loop: first pass, notice the obvious issues, add the appropriate filter, re-run. Showing the iteration here, with the audit chapter explicit and the triage framework documented in chapter 05, is more honest than pretending the workflow was pristine from the first commit.
 
 ## Origin
 
 The methodology is based on a 2017 internship project for a German retail company. The original was three iterative R scripts running on a confidential transaction dump. This repository is a from-scratch modernization with three key differences:
 
-- **No real data.** The dataset in `data/synthetic/` is fully synthesized to preserve confidentiality while reproducing the structural and statistical properties needed to make the analyses meaningful — co-purchase patterns, temporal trends, popularity skew, customer-level lifetime/frequency structure. See [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md) for the schema and the synthesis design.
+- **No real data.** The dataset in `data/synthetic/` is fully synthesized to preserve confidentiality while reproducing the structural and statistical properties needed to make the analyses meaningful: co-purchase patterns, temporal trends, popularity skew, customer-level lifetime/frequency structure. See [`docs/DATA_SPEC.md`](docs/DATA_SPEC.md) for the schema and the synthesis design.
 - **Multi-language.** The original was R-only with monolithic scripts. The modernized version splits the work into focused chapters, mixes R and Python where each language fits best, and uses Quarto so code, output, and explanation live in one document.
-- **Modern methods added.** The original had three classic chapters (rules, BCG, RFM). The modernized version adds probabilistic CLV with BG/NBD + Gamma-Gamma, survival analysis, demand forecasting, product embeddings, and causal uplift — plus a synthesis chapter that cross-references the upstream analyses and a dashboard summary. The methodological roadmap and lower-priority deferred items are tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+- **Modern methods added.** The original had three classic chapters (rules, BCG, RFM). The modernized version adds probabilistic CLV with BG/NBD + Gamma-Gamma, survival analysis, demand forecasting, product embeddings, and causal uplift, plus a synthesis chapter that cross-references the upstream analyses and a dashboard summary. The methodological roadmap and lower-priority deferred items are tracked in [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ## Methods at a glance
 
-**Association rules.** The Apriori algorithm finds rules of the form $A \Rightarrow B$ characterized by *support*, *confidence* ($P(B|A)$), and *lift* ($P(B|A)/P(B)$). Mining at sup ≥ 0.001 and conf ≥ 0.5 returns ~300 rules — the simplest and strongest recover engineered patterns like *dining_table → dining_chair* (~86% confidence, 6× lift).
+**Association rules.** The Apriori algorithm finds rules of the form $A \Rightarrow B$ characterized by *support*, *confidence* ($P(B|A)$), and *lift* ($P(B|A)/P(B)$). Mining at sup ≥ 0.001 and conf ≥ 0.5 returns ~300 rules; the simplest and strongest recover engineered patterns like *dining_table → dining_chair* (~86% confidence, 6× lift).
 
-**BCG clustering.** Per-product market share (`revenue / total_revenue`) and growth rate (period-over-period revenue change). Standardize, k-means with k=4 — elbow lands cleanly there. Maps onto canonical BCG quadrants (Stars, Cash Cows, Question Marks, Dogs).
+**BCG clustering.** Per-product market share (`revenue / total_revenue`) and growth rate (period-over-period revenue change). Standardize, k-means with k=4; elbow lands cleanly there. Maps onto canonical BCG quadrants (Stars, Cash Cows, Question Marks, Dogs).
 
 **RFM clustering.** Per product: recency (months since last sale), frequency (line-item count), monetary value (sum of gross prices). Standardize → k-means with k=4 → rank from healthy core to dying tail. Interactive 3D scatter (plotly).
 
@@ -77,7 +77,7 @@ The methodology is based on a 2017 internship project for a German retail compan
 
 **Survival analysis.** Kaplan-Meier estimates the population survival curve for time-to-first-repeat, with right-censoring on customers who haven't returned yet. Cox proportional hazards adds covariates (basket value, category, discount usage) and reports hazard ratios. Together: *who's still in play, when does the comeback rate flatten, what features speed or slow return?*
 
-**Demand forecasting.** Monthly revenue per product group projected three months ahead with four models (naive, seasonal naive, ETS, SARIMA), backtested on the last quarter and compared by MAE in EUR plus MAPE. The chapter is honest about how 24 months sits at the edge of what classical seasonal models can support — the right answer is often that simple baselines win, which is itself a finding.
+**Demand forecasting.** Monthly revenue per product group projected three months ahead with four models (naive, seasonal naive, ETS, SARIMA), backtested on the last quarter and compared by MAE in EUR plus MAPE. The chapter is honest about how 24 months sits at the edge of what classical seasonal models can support: the right answer is often that simple baselines win, which is itself a finding.
 
 **Product embeddings.** Each item gets a 20-dimensional vector via PPMI (Positive Pointwise Mutual Information) on the basket co-occurrence matrix, factorized with Truncated SVD. Mathematically equivalent to word2vec with negative sampling (Levy & Goldberg 2014) but pure scikit-learn. Cosine similarity between vectors gives substitution candidates and t-SNE recovers the catalog category structure without ever seeing the labels.
 
@@ -91,16 +91,16 @@ The methodology is based on a 2017 internship project for a German retail compan
 retail-customer-analysis/
 ├── _quarto.yml             # Quarto project config
 ├── index.qmd               # Landing page
-├── 00-data-audit.qmd       # Chapter 0 — Python (catalog hygiene, bundle tagging, triage)
-├── 01-association.qmd      # Chapter 1 — R + Python
-├── 02-cluster-2d-bcg.qmd   # Chapter 2 — Python
-├── 03-cluster-3d-rfm.qmd   # Chapter 3 — R
-├── 04-clv-bgnbd.qmd        # Chapter 4 — Python
-├── 05-insights.qmd         # Chapter 5 — Python (synthesis)
-├── 06-survival.qmd         # Chapter 6 — Python (survival analysis)
-├── 07-forecasting.qmd      # Chapter 7 — Python (demand forecasting)
-├── 08-embeddings.qmd       # Chapter 8 — Python (product embeddings)
-├── 09-causal-uplift.qmd    # Chapter 9 — Python (causal uplift)
+├── 00-data-audit.qmd       # Chapter 0, Python (catalog hygiene, bundle tagging, triage)
+├── 01-association.qmd      # Chapter 1, R + Python
+├── 02-cluster-2d-bcg.qmd   # Chapter 2, Python
+├── 03-cluster-3d-rfm.qmd   # Chapter 3, R
+├── 04-clv-bgnbd.qmd        # Chapter 4, Python
+├── 05-insights.qmd         # Chapter 5, Python (synthesis)
+├── 06-survival.qmd         # Chapter 6, Python (survival analysis)
+├── 07-forecasting.qmd      # Chapter 7, Python (demand forecasting)
+├── 08-embeddings.qmd       # Chapter 8, Python (product embeddings)
+├── 09-causal-uplift.qmd    # Chapter 9, Python (causal uplift)
 ├── dashboard.qmd           # Quarto dashboard view
 ├── notebooks/
 │   └── rfm_clustering.ipynb        # Standalone Colab notebook
@@ -110,7 +110,7 @@ retail-customer-analysis/
 ├── R/
 │   └── install_packages.R          # One-shot R dependency setup
 ├── data/
-│   ├── raw/                # Real data (gitignored — see data/raw/README.md)
+│   ├── raw/                # Real data (gitignored, see data/raw/README.md)
 │   └── synthetic/
 │       └── transactions.csv        # ~6,400 line items, deterministic seed
 ├── docs/
@@ -124,4 +124,4 @@ retail-customer-analysis/
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT, see [`LICENSE`](LICENSE).
