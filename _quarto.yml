@@ -5,7 +5,7 @@ project:
     - "*.qmd"
     - "notebooks/*.ipynb"
   resources:
-    - og-image-v2.png
+    - og-image-v3.png
 
 website:
   title: "Retail Customer & Basket Analysis"
@@ -14,14 +14,14 @@ website:
   open-graph:
     title: "Retail Customer & Basket Analysis"
     description: "End-to-end retail analytics portfolio: market basket, RFM, CLV, survival, forecasting, embeddings, causal uplift. By Per Paulsen."
-    image: "/og-image-v2.png"
+    image: "/og-image-v3.png"
     image-width: 1200
     image-height: 630
     locale: en_US
   twitter-card:
     title: "Retail Customer & Basket Analysis"
     description: "End-to-end retail analytics portfolio: market basket, RFM, CLV, survival, forecasting, embeddings, causal uplift."
-    image: "/og-image-v2.png"
+    image: "/og-image-v3.png"
     card-style: summary_large_image
   navbar:
     left:

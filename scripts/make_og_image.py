@@ -83,7 +83,7 @@ def main() -> None:
     site_w = draw.textlength(site, font=f_mono)
     draw.text((W - pad - site_w, fy), site, font=f_mono, fill=DIM)
 
-    out = Path(__file__).resolve().parent.parent / "og-image-v2.png"
+    out = Path(__file__).resolve().parent.parent / "og-image-v3.png"
     img.save(out, "PNG", optimize=True)
     print(f"Wrote {out} ({out.stat().st_size} bytes)")
 
