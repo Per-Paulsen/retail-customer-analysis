@@ -277,15 +277,23 @@ bottom_revenue_share = bottom_overlap["value"].sum() / total_revenue
 # Use the cross-sell view (cross-bundle, asymmetric, lift >= 2), sorted by
 # confidence — same logic as chapter 01's View 2.
 top_cross_sell = cross_sell.sort_values("confidence", ascending=False)
-top_rule = top_cross_sell.iloc[0]
-ant, con = top_rule["antecedent"], top_rule["consequent"]
-basket_sets = df.groupby("transaction_id")["article_name"].apply(set)
-ant_baskets = basket_sets[basket_sets.apply(lambda s: ant in s)]
-ant_n = len(ant_baskets)
-con_in_ant = ant_baskets.apply(lambda s: con in s).sum()
-miss_n = ant_n - con_in_ant
-avg_con_price = df.loc[df["article_name"] == con, "gross_price"].mean()
-miss_eur = miss_n * avg_con_price
+if len(top_cross_sell) > 0:
+    top_rule = top_cross_sell.iloc[0]
+    ant, con = top_rule["antecedent"], top_rule["consequent"]
+    basket_sets = df.groupby("transaction_id")["article_name"].apply(set)
+    ant_baskets = basket_sets[basket_sets.apply(lambda s: ant in s)]
+    ant_n = len(ant_baskets)
+    con_in_ant = ant_baskets.apply(lambda s: con in s).sum()
+    miss_n = ant_n - con_in_ant
+    avg_con_price = df.loc[df["article_name"] == con, "gross_price"].mean()
+    miss_eur = miss_n * avg_con_price
+    has_top_rule = True
+else:
+    ant = con = None
+    ant_n = con_in_ant = miss_n = 0
+    avg_con_price = 0.0
+    miss_eur = 0.0
+    has_top_rule = False
 
 # --- Customer side: CLV decile sizing ---
 n_returning = len(returning_sorted)
@@ -325,9 +333,12 @@ print()
 print(f"BCG=4 ∩ RFM=4 (delisting candidates): {len(bottom_overlap)} products, €{bottom_overlap['value'].sum():,.0f}  ({bottom_revenue_share:.1%} of total)")
 print(f"  members:    {', '.join(bottom_overlap.index.tolist()) or '(none)'}")
 print()
-print(f"Top rule:  {ant}  →  {con}")
-print(f"  {ant_n} baskets contained {ant};  {con_in_ant} ({con_in_ant/ant_n:.0%}) also bought {con}")
-print(f"  miss: {miss_n} baskets had {ant} but no {con};  upsell value @ avg €{avg_con_price:,.0f}/{con}: €{miss_eur:,.0f}")
+if has_top_rule:
+    print(f"Top rule:  {ant}  →  {con}")
+    print(f"  {ant_n} baskets contained {ant};  {con_in_ant} ({con_in_ant/ant_n:.0%}) also bought {con}")
+    print(f"  miss: {miss_n} baskets had {ant} but no {con};  upsell value @ avg €{avg_con_price:,.0f}/{con}: €{miss_eur:,.0f}")
+else:
+    print("Top rule:  (no cross-sell rule survived the View-2 filters)")
 print()
 print("=" * 60)
 print("CUSTOMER SIDE")
