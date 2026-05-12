@@ -54,7 +54,7 @@ def main() -> None:
     title = "Retail Analysis"
     subline = "End-to-end analytics"
     by = "by Per Paulsen"
-    site = "per-paulsen.github.io/retail-customer-analysis"
+    site = "per-paulsen.github.io"
 
     f_eyebrow = font(26, "semibold")
     f_title = font(160, "light")
@@ -82,7 +82,7 @@ def main() -> None:
     site_w = draw.textlength(site, font=f_mono)
     draw.text((W - pad - site_w, fy), site, font=f_mono, fill=DIM)
 
-    out = Path(__file__).resolve().parent.parent / "og-image-v4.png"
+    out = Path(__file__).resolve().parent.parent / "og-image-v5.png"
     img.save(out, "PNG", optimize=True)
     print(f"Wrote {out} ({out.stat().st_size} bytes)")
 
