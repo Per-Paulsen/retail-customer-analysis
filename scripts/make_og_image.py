@@ -1,6 +1,9 @@
 """Generate the 1200x630 Open-Graph image for the site.
 
-Run once after editing — output is committed at repo root as og-image.png
+Quarto Cosmo-inspired palette: white background, cosmo-blue accent,
+light-weight title — matches the data-analytics feel of the live site.
+
+Run once after editing — output is committed at repo root as og-image-v2.png
 and referenced from _quarto.yml.
 """
 
@@ -10,20 +13,22 @@ from PIL import Image, ImageDraw, ImageFont
 
 
 W, H = 1200, 630
-BG = (10, 10, 10)
-FG = (250, 250, 250)
-ACCENT = (251, 191, 36)  # amber-400 (different from Expliq indigo / APIQ violet)
-MUTED = (161, 161, 170)  # zinc-400
-DIM = (113, 113, 122)  # zinc-500
+BG = (255, 255, 255)  # white
+FG = (33, 37, 41)  # Bootstrap default body dark  #212529
+ACCENT = (39, 128, 227)  # Cosmo blue  #2780e3
+MUTED = (108, 117, 125)  # Bootstrap muted  #6c757d
+DIM = (173, 181, 189)  # Bootstrap secondary-muted  #adb5bd
 
 
-def load_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    candidates = [
-        "C:/Windows/Fonts/seguivar.ttf" if not bold else "C:/Windows/Fonts/seguibl.ttf",
-        "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
-    ]
-    for path in candidates:
+def font(size: int, weight: str = "regular") -> ImageFont.FreeTypeFont:
+    """weight: 'light' | 'regular' | 'semibold' | 'bold'"""
+    by_weight = {
+        "light": ["C:/Windows/Fonts/segoeuil.ttf", "C:/Windows/Fonts/segoeui.ttf"],
+        "regular": ["C:/Windows/Fonts/segoeui.ttf", "C:/Windows/Fonts/arial.ttf"],
+        "semibold": ["C:/Windows/Fonts/seguisb.ttf", "C:/Windows/Fonts/segoeui.ttf"],
+        "bold": ["C:/Windows/Fonts/segoeuib.ttf", "C:/Windows/Fonts/arialbd.ttf"],
+    }
+    for path in by_weight[weight]:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
@@ -47,33 +52,33 @@ def main() -> None:
 
     eyebrow = "PORTFOLIO PROJECT"
     title = "Retail Analysis"
-    subline = "End-to-end analytics across 9 chapters"
+    subline = "End-to-end analytics"
     desc = "Market basket, RFM, CLV, survival, forecasting, embeddings, causal."
     by = "by Per Paulsen"
     site = "per-paulsen.github.io/retail-customer-analysis"
 
-    f_eyebrow = load_font(26, bold=False)
-    f_title = load_font(144, bold=True)
-    f_sub = load_font(56, bold=True)
-    f_desc = load_font(32, bold=False)
-    f_footer = load_font(24, bold=False)
-    f_mono = mono_font(24)
+    f_eyebrow = font(26, "semibold")
+    f_title = font(160, "light")
+    f_sub = font(58, "regular")
+    f_desc = font(30, "regular")
+    f_footer = font(22, "regular")
+    f_mono = mono_font(22)
 
     y = pad
     spaced = "   ".join(list(eyebrow))
-    draw.text((pad, y), spaced, font=f_eyebrow, fill=DIM)
-    y += 65
+    draw.text((pad, y), spaced, font=f_eyebrow, fill=ACCENT)
+    y += 70
 
     draw.text((pad, y), title, font=f_title, fill=FG)
-    y += 175
+    y += 195
 
     draw.text((pad, y), subline, font=f_sub, fill=ACCENT)
-    y += 85
+    y += 90
 
     draw.text((pad, y), desc, font=f_desc, fill=MUTED)
 
     # footer
-    fy = H - pad - 24
+    fy = H - pad - 22
     draw.text((pad, fy), by, font=f_footer, fill=DIM)
     site_w = draw.textlength(site, font=f_mono)
     draw.text((W - pad - site_w, fy), site, font=f_mono, fill=DIM)
