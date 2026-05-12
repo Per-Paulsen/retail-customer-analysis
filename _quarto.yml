@@ -4,9 +4,25 @@ project:
   render:
     - "*.qmd"
     - "notebooks/*.ipynb"
+  resources:
+    - og-image.png
 
 website:
   title: "Retail Customer & Basket Analysis"
+  site-url: "https://per-paulsen.github.io/retail-customer-analysis/"
+  description: "End-to-end retail analytics portfolio: market basket, RFM, CLV, survival, forecasting, embeddings, causal uplift. By Per Paulsen."
+  open-graph:
+    title: "Retail Customer & Basket Analysis"
+    description: "End-to-end retail analytics portfolio: market basket, RFM, CLV, survival, forecasting, embeddings, causal uplift. By Per Paulsen."
+    image: "/og-image.png"
+    image-width: 1200
+    image-height: 630
+    locale: en_US
+  twitter-card:
+    title: "Retail Customer & Basket Analysis"
+    description: "End-to-end retail analytics portfolio: market basket, RFM, CLV, survival, forecasting, embeddings, causal uplift."
+    image: "/og-image.png"
+    card-style: summary_large_image
   navbar:
     left:
       - href: index.qmd
