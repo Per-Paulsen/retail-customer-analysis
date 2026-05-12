@@ -53,29 +53,28 @@ def main() -> None:
     eyebrow = "PORTFOLIO PROJECT"
     title = "Retail Analysis"
     subline = "End-to-end analytics"
-    desc = "Market basket, RFM, CLV, survival, forecasting, embeddings, causal."
     by = "by Per Paulsen"
     site = "per-paulsen.github.io/retail-customer-analysis"
 
     f_eyebrow = font(26, "semibold")
     f_title = font(160, "light")
-    f_sub = font(58, "regular")
-    f_desc = font(30, "regular")
+    f_sub = font(56, "regular")
     f_footer = font(22, "regular")
     f_mono = mono_font(22)
 
-    y = pad
+    # Stack the three core blocks (eyebrow / title / subline) so that
+    # they sit visually centered in the upper-middle of the canvas,
+    # leaving generous white space around them — matches the airier
+    # composition of the Expliq / APIQ tiles.
+    y = 150
     spaced = "   ".join(list(eyebrow))
     draw.text((pad, y), spaced, font=f_eyebrow, fill=ACCENT)
     y += 70
 
     draw.text((pad, y), title, font=f_title, fill=FG)
-    y += 195
+    y += 200
 
     draw.text((pad, y), subline, font=f_sub, fill=ACCENT)
-    y += 90
-
-    draw.text((pad, y), desc, font=f_desc, fill=MUTED)
 
     # footer
     fy = H - pad - 22
@@ -83,7 +82,7 @@ def main() -> None:
     site_w = draw.textlength(site, font=f_mono)
     draw.text((W - pad - site_w, fy), site, font=f_mono, fill=DIM)
 
-    out = Path(__file__).resolve().parent.parent / "og-image-v3.png"
+    out = Path(__file__).resolve().parent.parent / "og-image-v4.png"
     img.save(out, "PNG", optimize=True)
     print(f"Wrote {out} ({out.stat().st_size} bytes)")
 
