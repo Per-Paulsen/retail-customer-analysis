@@ -178,8 +178,12 @@ cross_sell = simple[
     & (simple["lift"] >= 2)
 ].sort_values("confidence", ascending=False).reset_index(drop=True)
 
-top_rule_str = f"{cross_sell.iloc[0]['antecedent']} → {cross_sell.iloc[0]['consequent']}"
-top_rule_conf = cross_sell.iloc[0]["confidence"]
+if len(cross_sell) > 0:
+    top_rule_str = f"{cross_sell.iloc[0]['antecedent']} → {cross_sell.iloc[0]['consequent']}"
+    top_rule_conf = cross_sell.iloc[0]["confidence"]
+else:
+    top_rule_str = "(no cross-sell rule survived filters)"
+    top_rule_conf = 0.0
 
 # --- CLV --------------------------------------------------------------------
 tx = df.groupby(["customer_id", "transaction_id", "date"], as_index=False)["gross_price"].sum()
