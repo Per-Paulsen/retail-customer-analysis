@@ -46,33 +46,29 @@ def main() -> None:
     pad = 80
 
     eyebrow = "PORTFOLIO PROJECT"
-    title_line_1 = "Retail Customer"
-    title_line_2 = "& Basket Analysis"
+    title = "Retail Analysis"
     subline = "End-to-end analytics across 9 chapters"
     desc = "Market basket, RFM, CLV, survival, forecasting, embeddings, causal."
     by = "by Per Paulsen"
     site = "per-paulsen.github.io/retail-customer-analysis"
 
     f_eyebrow = load_font(26, bold=False)
-    f_title = load_font(108, bold=True)
-    f_sub = load_font(48, bold=True)
-    f_desc = load_font(30, bold=False)
+    f_title = load_font(144, bold=True)
+    f_sub = load_font(56, bold=True)
+    f_desc = load_font(32, bold=False)
     f_footer = load_font(24, bold=False)
     f_mono = mono_font(24)
 
     y = pad
-    # eyebrow with letter spacing (manual: insert thin space)
     spaced = "   ".join(list(eyebrow))
     draw.text((pad, y), spaced, font=f_eyebrow, fill=DIM)
-    y += 60
+    y += 65
 
-    draw.text((pad, y), title_line_1, font=f_title, fill=FG)
-    y += 120
-    draw.text((pad, y), title_line_2, font=f_title, fill=FG)
-    y += 130
+    draw.text((pad, y), title, font=f_title, fill=FG)
+    y += 175
 
     draw.text((pad, y), subline, font=f_sub, fill=ACCENT)
-    y += 70
+    y += 85
 
     draw.text((pad, y), desc, font=f_desc, fill=MUTED)
 
